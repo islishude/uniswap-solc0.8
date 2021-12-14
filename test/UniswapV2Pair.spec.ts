@@ -301,7 +301,7 @@ describe("UniswapV2Pair", () => {
     );
     const tx = await pair.swap(expectedOutputAmount, 0, wallet.address, "0x");
     const receipt = await tx.wait();
-    expect(receipt.gasUsed).to.eq(74345);
+    expect(receipt.gasUsed).to.eq(73959);
   });
 
   it("burn", async () => {
