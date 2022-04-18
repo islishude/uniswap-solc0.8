@@ -28,13 +28,15 @@ library UniswapV2Library {
     ) internal pure returns (address pair) {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
         pair = address(
-            bytes20(
-                keccak256(
-                    abi.encodePacked(
-                        hex"ff",
-                        factory,
-                        keccak256(abi.encodePacked(token0, token1)),
-                        hex"443533a897cfad2762695078bf6ee9b78b4edcda64ec31e1c83066cee4c90a7e" // init code hash
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff),
+                            factory,
+                            keccak256(abi.encodePacked(token0, token1)),
+                            hex"443533a897cfad2762695078bf6ee9b78b4edcda64ec31e1c83066cee4c90a7e" // init code hash
+                        )
                     )
                 )
             )
@@ -83,7 +85,7 @@ library UniswapV2Library {
         );
         uint256 amountInWithFee = amountIn * 997;
         uint256 numerator = amountInWithFee * reserveOut;
-        uint256 denominator = reserveIn * 100 + amountInWithFee;
+        uint256 denominator = reserveIn * 1000 + amountInWithFee;
         amountOut = numerator / denominator;
     }
 
@@ -100,7 +102,7 @@ library UniswapV2Library {
         );
         uint256 numerator = reserveIn * amountOut * 1000;
         uint256 denominator = (reserveOut - amountOut) * 997;
-        amountIn = (numerator / denominator) + 1;
+        amountIn = numerator / denominator + 1;
     }
 
     // performs chained getAmountOut calculations on any number of pairs
