@@ -2,6 +2,10 @@
 
 pragma solidity =0.8.4;
 
+//solhint-disable not-rely-on-time
+//solhint-disable var-name-mixedcase
+//solhint-disable reason-string
+
 import "./interfaces/IUniswapV2Factory.sol";
 import "./libraries/TransferHelper.sol";
 

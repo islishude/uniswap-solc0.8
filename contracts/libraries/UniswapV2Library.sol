@@ -2,6 +2,8 @@
 
 pragma solidity =0.8.4;
 
+//solhint-disable reason-string
+
 import "../interfaces/IUniswapV2Pair.sol";
 
 library UniswapV2Library {
