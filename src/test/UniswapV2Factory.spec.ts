@@ -60,6 +60,7 @@ describe("UniswapV2Factory", () => {
     const { factory } = await loadFixture(fixture);
     const codehash = await factory.PAIR_HASH();
     const pair = await ethers.getContractFactory("UniswapV2Pair");
+    console.log("Pair code hash", codehash);
     expect(ethers.utils.keccak256(pair.bytecode)).to.be.eq(codehash);
   });
 
