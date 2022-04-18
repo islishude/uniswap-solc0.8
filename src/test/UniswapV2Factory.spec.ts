@@ -56,6 +56,13 @@ describe("UniswapV2Factory", () => {
     expect(await pair.token1()).to.eq(TEST_ADDRESSES[1]);
   }
 
+  it("Pair:codeHash", async () => {
+    const { factory } = await loadFixture(fixture);
+    const codehash = await factory.PAIR_HASH();
+    const pair = await ethers.getContractFactory("UniswapV2Pair");
+    expect(ethers.utils.keccak256(pair.bytecode)).to.be.eq(codehash);
+  });
+
   it("createPair", async () => {
     const { factory } = await loadFixture(fixture);
     await createPair(factory, [...TEST_ADDRESSES]);
