@@ -97,3 +97,5 @@ export async function setNextBlockTime(
 ): Promise<void> {
   return provider.send("evm_setNextBlockTimestamp", [timestamp]);
 }
+
+export const MINIMUM_LIQUIDITY = BigNumber.from(10).pow(3);

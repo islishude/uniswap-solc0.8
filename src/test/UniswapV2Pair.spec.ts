@@ -103,9 +103,7 @@ describe("UniswapV2Pair", () => {
   );
   swapTestCases.forEach((swapTestCase, i) => {
     it(`getInputPrice:${i}`, async () => {
-      const { pair, wallet, token0, token1, other } = await loadFixture(
-        fixture
-      );
+      const { pair, wallet, token0, token1 } = await loadFixture(fixture);
 
       const [swapAmount, token0Amount, token1Amount, expectedOutputAmount] =
         swapTestCase;
@@ -158,7 +156,7 @@ describe("UniswapV2Pair", () => {
   });
 
   it("swap:token0", async () => {
-    const { pair, wallet, token0, token1, other } = await loadFixture(fixture);
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
 
     const token0Amount = expandTo18Decimals(5);
     const token1Amount = expandTo18Decimals(10);
