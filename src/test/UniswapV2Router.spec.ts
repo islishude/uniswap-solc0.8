@@ -1,12 +1,12 @@
+import { Provider } from "@ethersproject/providers";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { MockProvider } from "ethereum-waffle";
 import { BigNumber, Contract, Wallet } from "ethers";
 import { ethers, waffle } from "hardhat";
 import {
   expandTo18Decimals,
   getApprovalDigest,
   MINIMUM_LIQUIDITY,
-  setNextBlockTime,
 } from "./shared/utilities";
 
 describe("UniswapV2Router", () => {
@@ -15,7 +15,7 @@ describe("UniswapV2Router", () => {
     waffle.provider
   );
 
-  async function v2Fixture([wallet]: Wallet[], provider: MockProvider) {
+  async function v2Fixture([wallet]: Wallet[], provider: Provider) {
     const token = await ethers.getContractFactory("ERC20");
 
     // deploy tokens
@@ -598,15 +598,13 @@ describe("UniswapV2Router", () => {
       await token0.approve(router02.address, ethers.constants.MaxUint256);
 
       // ensure that setting price{0,1}CumulativeLast for the first time doesn't affect our gas math
-      await setNextBlockTime(
-        provider,
+      await time.setNextBlockTimestamp(
         (await provider.getBlock("latest")).timestamp + 1
       );
       await pair.sync();
 
       await token0.approve(router02.address, ethers.constants.MaxUint256);
-      await setNextBlockTime(
-        provider,
+      await time.setNextBlockTimestamp(
         (await provider.getBlock("latest")).timestamp + 1
       );
       const tx = await router02.swapExactTokensForTokens(
@@ -808,15 +806,13 @@ describe("UniswapV2Router", () => {
       await token0.approve(router02.address, ethers.constants.MaxUint256);
 
       // ensure that setting price{0,1}CumulativeLast for the first time doesn't affect our gas math
-      await setNextBlockTime(
-        provider,
+      await time.setNextBlockTimestamp(
         (await provider.getBlock("latest")).timestamp + 1
       );
       await pair.sync();
 
       const swapAmount = expandTo18Decimals(1);
-      await setNextBlockTime(
-        provider,
+      await time.setNextBlockTimestamp(
         (await provider.getBlock("latest")).timestamp + 1
       );
       const tx = await router02.swapExactETHForTokens(

@@ -5,7 +5,7 @@
   "homepage": "https://uniswap.org",
   "repository": {
     "type": "git",
-    "url": "https://github.com/islishude/eth-create2-wallet"
+    "url": "https://github.com/islishude/uniswapv2-solc0.8"
   },
   "keywords": [
     "uniswap",
@@ -17,42 +17,42 @@
   "files": [
     "contracts",
     "build",
-    "typechain"
+    "typechain-types"
   ],
   "engines": {
-    "node": ">=10"
+    "node": ">=16"
   },
   "devDependencies": {
-    "@nomiclabs/hardhat-ethers": "^2.0.0",
-    "@nomiclabs/hardhat-etherscan": "^3.0.0",
-    "@nomiclabs/hardhat-waffle": "^2.0.0",
-    "@typechain/ethers-v5": "^7.0.1",
-    "@typechain/hardhat": "^2.3.0",
-    "@types/chai": "^4.2.21",
-    "@types/mocha": "^9.0.0",
-    "@types/node": "^17.0.24",
-    "@typescript-eslint/eslint-plugin": "^4.29.1",
-    "@typescript-eslint/parser": "^4.29.1",
-    "chai": "^4.2.0",
-    "dotenv": "^10.0.0",
-    "eslint": "^7.29.0",
-    "eslint-config-prettier": "^8.3.0",
-    "eslint-config-standard": "^16.0.3",
-    "eslint-plugin-import": "^2.23.4",
-    "eslint-plugin-node": "^11.1.0",
-    "eslint-plugin-prettier": "^3.4.0",
-    "eslint-plugin-promise": "^5.1.0",
-    "ethereum-waffle": "^3.0.0",
-    "ethers": "^5.0.0",
-    "hardhat": "^2.9.1",
-    "hardhat-gas-reporter": "^1.0.4",
-    "prettier": "^2.3.2",
-    "prettier-plugin-solidity": "^1.0.0-beta.13",
-    "solhint": "^3.3.6",
-    "solidity-coverage": "^0.7.16",
-    "ts-node": "^10.1.0",
-    "typechain": "^5.1.2",
-    "typescript": "^4.5.2"
+    "@ethersproject/abi": "^5.7.0",
+    "@ethersproject/providers": "^5.7.2",
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.4",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.6",
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
+    "@nomiclabs/hardhat-ethers": "^2.2.1",
+    "@nomiclabs/hardhat-etherscan": "^3.1.2",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "@typechain/ethers-v5": "^10.1.1",
+    "@typechain/hardhat": "^6.1.4",
+    "@types/chai": "^4.3.4",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^18.11.9",
+    "@typescript-eslint/eslint-plugin": "^5.42.1",
+    "@typescript-eslint/parser": "^5.42.1",
+    "chai": "^4.3.7",
+    "dotenv": "^16.0.3",
+    "eslint": "^8.27.0",
+    "ethereum-waffle": "^3.4.4",
+    "ethers": "^5.7.2",
+    "hardhat": "^2.12.2",
+    "hardhat-deploy": "^0.11.20",
+    "hardhat-gas-reporter": "^1.0.9",
+    "prettier": "^2.7.1",
+    "prettier-plugin-solidity": "^1.0.0-rc.1",
+    "solhint": "^3.3.7",
+    "solidity-coverage": "^0.8.2",
+    "ts-node": "^10.9.1",
+    "typechain": "^8.1.1",
+    "typescript": "^4.8.4"
   },
   "scripts": {
     "lint": "prettier --check src contracts && solhint 'contracts/**/*.sol'",
@@ -64,5 +64,5 @@
     "prepublishOnly": "yarn test"
   },
   "license": "GPL-3.0-or-later",
-  "packageManager": "yarn@3.2.0"
+  "packageManager": "yarn@3.2.4"
 }

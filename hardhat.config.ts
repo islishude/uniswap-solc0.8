@@ -1,18 +1,14 @@
-import * as dotenv from "dotenv";
-
 import { HardhatUserConfig } from "hardhat/config";
-import "@nomiclabs/hardhat-etherscan";
+
+import "@nomicfoundation/hardhat-toolbox";
 import "@nomiclabs/hardhat-waffle";
-import "@typechain/hardhat";
-import "@nomiclabs/hardhat-ethers";
-import "@nomiclabs/hardhat-waffle";
-import "hardhat-gas-reporter";
-import "solidity-coverage";
+import "hardhat-deploy";
+
+import * as dotenv from "dotenv";
+dotenv.config();
 
 // tasks
 import "./src/tasks/accounts";
-
-dotenv.config();
 
 const config: HardhatUserConfig = {
   networks: {
@@ -38,7 +34,7 @@ const config: HardhatUserConfig = {
     currency: "USD",
   },
   typechain: {
-    outDir: "./src/types",
+    outDir: "typechain-types",
     target: "ethers-v5",
   },
   paths: {

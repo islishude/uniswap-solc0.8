@@ -2,13 +2,10 @@ import { expect } from "chai";
 import { BigNumber, constants as ethconst, Wallet } from "ethers";
 import { ethers, waffle } from "hardhat";
 
-import {
-  expandTo18Decimals,
-  encodePrice,
-  setNextBlockTime,
-} from "./shared/utilities";
-import { UniswapV2Pair, ERC20 } from "../types";
-import { MockProvider } from "@ethereum-waffle/provider";
+import { expandTo18Decimals, encodePrice } from "./shared/utilities";
+import { UniswapV2Pair, ERC20 } from "../../typechain-types";
+import { Provider } from "@ethersproject/providers";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 
 const MINIMUM_LIQUIDITY = BigNumber.from(10).pow(3);
 
@@ -18,7 +15,7 @@ describe("UniswapV2Pair", () => {
     waffle.provider
   );
 
-  async function fixture([wallet, other]: Wallet[], provider: MockProvider) {
+  async function fixture([wallet, other]: Wallet[], provider: Provider) {
     const factory = await (
       await ethers.getContractFactory("UniswapV2Factory")
     ).deploy(wallet.address);
@@ -284,8 +281,7 @@ describe("UniswapV2Pair", () => {
       (await provider.getBlock("latest")).timestamp + 1,
     ]);
 
-    await setNextBlockTime(
-      provider,
+    await time.setNextBlockTimestamp(
       (await provider.getBlock("latest")).timestamp + 1
     );
     await pair.sync();
@@ -293,8 +289,7 @@ describe("UniswapV2Pair", () => {
     const swapAmount = expandTo18Decimals(1);
     const expectedOutputAmount = BigNumber.from("453305446940074565");
     await token1.transfer(pair.address, swapAmount);
-    await setNextBlockTime(
-      provider,
+    await time.setNextBlockTimestamp(
       (await provider.getBlock("latest")).timestamp + 1
     );
     const tx = await pair.swap(expectedOutputAmount, 0, wallet.address, "0x");
@@ -370,7 +365,7 @@ describe("UniswapV2Pair", () => {
     );
 
     const blockTimestamp = (await pair.getReserves())[2];
-    await setNextBlockTime(provider, blockTimestamp + 1);
+    await time.setNextBlockTimestamp(blockTimestamp + 1);
     await pair.sync();
 
     const initialPrice = encodePrice(token0Amount, token1Amount);
@@ -380,7 +375,7 @@ describe("UniswapV2Pair", () => {
 
     const swapAmount = expandTo18Decimals(3);
     await token0.transfer(pair.address, swapAmount);
-    await setNextBlockTime(provider, blockTimestamp + 10);
+    await time.setNextBlockTimestamp(blockTimestamp + 10);
     // swap to a new price eagerly instead of syncing
     await pair.swap(0, expandTo18Decimals(1), wallet.address, "0x"); // make the price nice
 
@@ -388,7 +383,7 @@ describe("UniswapV2Pair", () => {
     expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1].mul(10));
     expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 10);
 
-    await setNextBlockTime(provider, blockTimestamp + 20);
+    await time.setNextBlockTimestamp(blockTimestamp + 20);
     await pair.sync();
 
     const newPrice = encodePrice(expandTo18Decimals(6), expandTo18Decimals(2));
