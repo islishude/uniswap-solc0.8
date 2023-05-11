@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
+
+import {ISuperfluid, ISuperToken, ISuperfluidToken, ISuperApp, ISuperAgreement, SuperAppDefinitions} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
+import {SuperAppBase} from "@superfluid-finance/ethereum-contracts/contracts/apps/SuperAppBase.sol";
+import {CFAv1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/CFAv1Library.sol";
+import {IConstantFlowAgreementV1} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol";
 
 import "./interfaces/IUniswapV2Pair.sol";
 import "./UniswapV2ERC20.sol";
@@ -15,14 +20,14 @@ import "./interfaces/IUniswapV2Callee.sol";
 //solhint-disable reason-string
 //solhint-disable not-rely-on-time
 
-contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
+contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     using UQ112x112 for uint224;
 
     uint256 public constant override MINIMUM_LIQUIDITY = 10 ** 3;
 
     address public override factory;
-    address public override token0;
-    address public override token1;
+    ISuperToken public override token0;
+    ISuperToken public override token1;
 
     uint112 private reserve0; // uses single storage slot, accessible via getReserves
     uint112 private reserve1; // uses single storage slot, accessible via getReserves
@@ -31,6 +36,22 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     uint256 public override price0CumulativeLast;
     uint256 public override price1CumulativeLast;
     uint256 public override kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
+
+    // track flowrates
+    uint public totalFlow0;
+    uint public totalFlow1;
+
+    // for TWAP balance tracking (use blockTimestampLast)
+    uint public twap0CumulativeLast;
+    uint public twap1CumulativeLast;
+
+    // superfluid
+    using CFAv1Library for CFAv1Library.InitData;
+    CFAv1Library.InitData public cfaV1;
+    bytes32 public constant CFA_ID =
+        keccak256("org.superfluid-finance.agreements.ConstantFlowAgreement.v1");
+    IConstantFlowAgreementV1 cfa;
+    ISuperfluid _host;
 
     uint256 private unlocked = 1;
     modifier lock() {
@@ -55,6 +76,33 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         _blockTimestampLast = blockTimestampLast;
     }
 
+    function getReservesAtTime(uint256 time) public view returns (uint _reserve0, uint _reserve1) {
+        uint32 blockTimestamp = uint32(block.timestamp % 2**32);
+        uint32 timeElapsed = blockTimestamp - blockTimestampLast;
+        uint _kLast = kLast;
+        uint _totalFlow0 = totalFlow0;
+        uint _totalFlow1 = totalFlow1;
+
+        if (_totalFlow0 > 0 && _totalFlow1 > 0) {
+            uint totalAmount0 = totalFlow0 * timeElapsed;
+            uint totalAmount1 = totalFlow1 * timeElapsed;
+            uint resChange0 = Math.sqrt(reserve0 * totalAmount1);
+            uint resChange1 = Math.sqrt(reserve1 * totalAmount0);
+            uint c = (resChange0 - resChange1) * 1e18 / (resChange0 + resChange1);
+            uint ePower = 3 ** (2 * Math.sqrt(totalFlow0 * totalFlow1 / _kLast));
+            _reserve0 = Math.sqrt((_kLast * totalAmount0) / totalAmount1) * (ePower + c) / ePower - c;
+            _reserve1 = _kLast / _reserve0;
+        } else if (totalFlow0 > 0) {
+            uint totalAmount0 = totalFlow0 * timeElapsed;
+            _reserve0 = reserve0 + totalAmount0;
+            _reserve1 = _kLast / _reserve0;
+        } else if (totalFlow1 > 0) {
+            uint totalAmount1 = totalFlow1 + timeElapsed;
+            _reserve1 = reserve1 + totalAmount1;
+            _reserve0 = _kLast / _reserve1;
+        }
+    }
+
     function _safeTransfer(address token, address to, uint256 value) private {
         (bool success, bytes memory data) = token.call(
             abi.encodeWithSelector(IERC20.transfer.selector, to, value)
@@ -65,12 +113,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         );
     }
 
-    constructor() {
+    constructor(ISuperfluid host) public {
+        assert(address(host) != address(0));
         factory = msg.sender;
+        _host = host;
+
+        cfa = IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)));
+        cfaV1 = CFAv1Library.InitData(host, cfa);
+
+        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL |
+            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP |
+            SuperAppDefinitions.BEFORE_AGREEMENT_UPDATED_NOOP |
+            SuperAppDefinitions.BEFORE_AGREEMENT_TERMINATED_NOOP;
+
+        host.registerApp(configWord);
     }
 
     // called once by the factory at time of deployment
-    function initialize(address _token0, address _token1) external override {
+    function initialize(ISuperToken _token0, ISuperToken _token1) external override {
         require(msg.sender == factory, "UniswapV2: FORBIDDEN"); // sufficient check
         token0 = _token0;
         token1 = _token1;
@@ -135,8 +195,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         address to
     ) external override lock returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        uint256 balance0 = IERC20(token0).balanceOf(address(this));
-        uint256 balance1 = IERC20(token1).balanceOf(address(this));
+        uint256 balance0 = token0.balanceOf(address(this));
+        uint256 balance1 = token1.balanceOf(address(this));
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
 
@@ -164,8 +224,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         address to
     ) external override lock returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        address _token0 = token0; // gas savings
-        address _token1 = token1; // gas savings
+        address _token0 = address(token0); // gas savings
+        address _token1 = address(token1); // gas savings
         uint256 balance0 = IERC20(_token0).balanceOf(address(this));
         uint256 balance1 = IERC20(_token1).balanceOf(address(this));
         uint256 liquidity = balanceOf[address(this)];
@@ -210,8 +270,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint256 balance1;
         {
             // scope for _token{0,1}, avoids stack too deep errors
-            address _token0 = token0;
-            address _token1 = token1;
+            address _token0 = address(token0);
+            address _token1 = address(token1);
             require(to != _token0 && to != _token1, "UniswapV2: INVALID_TO");
             if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
             if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
@@ -252,8 +312,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     // force balances to match reserves
     function skim(address to) external override lock {
-        address _token0 = token0; // gas savings
-        address _token1 = token1; // gas savings
+        address _token0 = address(token0); // gas savings
+        address _token1 = address(token1); // gas savings
         _safeTransfer(
             _token0,
             to,
@@ -269,10 +329,79 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     // force reserves to match balances
     function sync() external override lock {
         _update(
-            IERC20(token0).balanceOf(address(this)),
-            IERC20(token1).balanceOf(address(this)),
+            token0.balanceOf(address(this)),
+            token1.balanceOf(address(this)),
             reserve0,
             reserve1
         );
+    }
+
+    // 3 streaming cases:
+    // 1. create
+    // 2. update
+    // 3. delete
+    // for all:
+    //   1) settle reserves and cumulatives
+    //   2) update net flowrates and last update timestamp
+    //
+    // if update or delete:
+    //   3) send user their locked funds
+
+    function _handleCallback(
+        ISuperToken _superToken,
+        bytes calldata _agreementData
+    ) internal {
+        require(
+            address(_superToken) == address(token0) || address(_superToken) == address(token1),
+            "RedirectAll: token not in pool"
+        );
+
+        // temp notes
+        // swap checks could be off, because it simply checks pool balances, so fix this
+        // ideally we'd write some input agnostic approach for streaming in the same way that v2 works with balances, but this will be difficult
+    }
+
+    function afterAgreementCreated(
+        ISuperToken _superToken,
+        address, //_agreementClass,
+        bytes32, //_agreementId
+        bytes calldata _agreementData,
+        bytes calldata, //_cbdata,
+        bytes calldata _ctx
+    ) external override onlyHost returns (bytes memory newCtx) {
+        _handleCallback(_superToken, _agreementData);
+        newCtx = _ctx;
+    }
+
+    function afterAgreementUpdated(
+        ISuperToken _superToken,
+        address, //_agreementClass,
+        bytes32, // _agreementId,
+        bytes calldata _agreementData,
+        bytes calldata, //_cbdata,
+        bytes calldata _ctx
+    ) external override onlyHost returns (bytes memory newCtx) {
+        _handleCallback(_superToken, _agreementData);
+        newCtx = _ctx;
+    }
+
+    function afterAgreementTerminated(
+        ISuperToken _superToken,
+        address, //_agreementClass,
+        bytes32, // _agreementId,
+        bytes calldata _agreementData,
+        bytes calldata, //_cbdata,
+        bytes calldata _ctx
+    ) external override onlyHost returns (bytes memory newCtx) {
+        _handleCallback(_superToken, _agreementData);
+        newCtx = _ctx;
+    }
+
+    modifier onlyHost() {
+        require(
+            msg.sender == address(cfaV1.host),
+            "RedirectAll: support only one host"
+        );
+        _;
     }
 }

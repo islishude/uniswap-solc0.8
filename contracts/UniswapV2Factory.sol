@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 import "./interfaces/IUniswapV2Factory.sol";
 import "./UniswapV2Pair.sol";
@@ -15,8 +15,13 @@ contract UniswapV2Factory is IUniswapV2Factory {
     mapping(address => mapping(address => address)) public override getPair;
     address[] public override allPairs;
 
-    constructor(address _feeToSetter) {
+    // superfluid
+    ISuperfluid _host;
+
+    constructor(address _feeToSetter, ISuperfluid host) {
+        assert(address(host) != address(0));
         feeToSetter = _feeToSetter;
+        _host = host;
     }
 
     function allPairsLength() external view override returns (uint256) {
@@ -40,9 +45,9 @@ contract UniswapV2Factory is IUniswapV2Factory {
         pair = address(
             new UniswapV2Pair{
                 salt: keccak256(abi.encodePacked(token0, token1))
-            }()
+            }(_host)
         );
-        IUniswapV2Pair(pair).initialize(token0, token1);
+        IUniswapV2Pair(pair).initialize(ISuperToken(token0), ISuperToken(token1));
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);

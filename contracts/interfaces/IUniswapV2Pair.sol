@@ -5,6 +5,8 @@ pragma solidity >=0.5.0;
 
 //solhint-disable func-name-mixedcase
 
+import {ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
+
 import "./IUniswapV2ERC20.sol";
 
 interface IUniswapV2Pair is IUniswapV2ERC20 {
@@ -29,9 +31,9 @@ interface IUniswapV2Pair is IUniswapV2ERC20 {
 
     function factory() external view returns (address);
 
-    function token0() external view returns (address);
+    function token0() external view returns (ISuperToken);
 
-    function token1() external view returns (address);
+    function token1() external view returns (ISuperToken);
 
     function getReserves()
         external
@@ -61,5 +63,5 @@ interface IUniswapV2Pair is IUniswapV2ERC20 {
 
     function sync() external;
 
-    function initialize(address, address) external;
+    function initialize(ISuperToken, ISuperToken) external;
 }
