@@ -32,7 +32,7 @@
     "@nomiclabs/hardhat-etherscan": "^3.1.2",
     "@openzeppelin/contracts": "^4.6.0",
     "@superfluid-finance/ethereum-contracts": "^1.6.0",
-    "@superfluid-finance/sdk-core": "latest",
+    "@superfluid-finance/sdk-core": "^0.4.4",
     "@typechain/ethers-v5": "^10.1.1",
     "@typechain/hardhat": "^6.1.4",
     "@types/chai": "^4.3.4",

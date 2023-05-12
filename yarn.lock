@@ -1207,7 +1207,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@superfluid-finance/ethereum-contracts@npm:1.6.0, @superfluid-finance/ethereum-contracts@npm:^1.6.0":
+"@superfluid-finance/ethereum-contracts@npm:^1.6.0":
   version: 1.6.0
   resolution: "@superfluid-finance/ethereum-contracts@npm:1.6.0"
   dependencies:
@@ -1243,21 +1243,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@superfluid-finance/sdk-core@npm:latest":
-  version: 0.6.4
-  resolution: "@superfluid-finance/sdk-core@npm:0.6.4"
+"@superfluid-finance/sdk-core@npm:^0.4.4":
+  version: 0.4.4
+  resolution: "@superfluid-finance/sdk-core@npm:0.4.4"
   dependencies:
-    "@nomiclabs/hardhat-ethers": ^2.2.1
-    "@superfluid-finance/ethereum-contracts": 1.6.0
-    "@superfluid-finance/metadata": "git+https://github.com/superfluid-finance/metadata.git"
+    ajv: ^8.11.0
     browserify: ^17.0.0
-    graphql-request: ^4.3.0
+    ethers: ^5.6.2
+    graphql-request: ^3.7.0
     lodash: ^4.17.21
     tsify: ^5.0.4
-  peerDependencies:
-    ethers: ^5.6.9
-    graphql: ^16.0.0
-  checksum: adcb7925f1b7f2c5c85a1fe25f925df73987cd31dead4f5aaf1172d05f220298ec5955cacd11a8907703d7a3d7be1e5751453e5c7f36fe095580daba6f7eff98
+  checksum: c5fd6e019870744d56c0b24e77b8b12d37f41b979ba563049962eb70bc75b24134b6f7ade48b9fd392fd525795a4180c1efde15c117a3dbdc2a40d3d12165dea
   languageName: node
   linkType: hard
 
@@ -1845,7 +1841,7 @@ __metadata:
     "@nomiclabs/hardhat-etherscan": ^3.1.2
     "@openzeppelin/contracts": ^4.6.0
     "@superfluid-finance/ethereum-contracts": ^1.6.0
-    "@superfluid-finance/sdk-core": latest
+    "@superfluid-finance/sdk-core": ^0.4.4
     "@typechain/ethers-v5": ^10.1.1
     "@typechain/hardhat": ^6.1.4
     "@types/chai": ^4.3.4
@@ -2069,6 +2065,18 @@ __metadata:
     require-from-string: ^2.0.2
     uri-js: ^4.2.2
   checksum: 5e0ff226806763be73e93dd7805b634f6f5921e3e90ca04acdf8db81eed9d8d3f0d4c5f1213047f45ebbf8047ffe0c840fa1ef2ec42c3a644899f69aa72b5bef
+  languageName: node
+  linkType: hard
+
+"ajv@npm:^8.11.0":
+  version: 8.12.0
+  resolution: "ajv@npm:8.12.0"
+  dependencies:
+    fast-deep-equal: ^3.1.1
+    json-schema-traverse: ^1.0.0
+    require-from-string: ^2.0.2
+    uri-js: ^4.2.2
+  checksum: 4dc13714e316e67537c8b31bc063f99a1d9d9a497eb4bbd55191ac0dcd5e4985bbb71570352ad6f1e76684fb6d790928f96ba3b2d4fd6e10024be9612fe3f001
   languageName: node
   linkType: hard
 
@@ -3738,7 +3746,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cross-fetch@npm:^3.1.4, cross-fetch@npm:^3.1.5":
+"cross-fetch@npm:^3.0.6, cross-fetch@npm:^3.1.4":
   version: 3.1.5
   resolution: "cross-fetch@npm:3.1.5"
   dependencies:
@@ -4916,7 +4924,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ethers@npm:^5.0.13, ethers@npm:^5.7.2":
+"ethers@npm:^5.0.13, ethers@npm:^5.6.2, ethers@npm:^5.7.2":
   version: 5.7.2
   resolution: "ethers@npm:5.7.2"
   dependencies:
@@ -5943,16 +5951,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"graphql-request@npm:^4.3.0":
-  version: 4.3.0
-  resolution: "graphql-request@npm:4.3.0"
+"graphql-request@npm:^3.7.0":
+  version: 3.7.0
+  resolution: "graphql-request@npm:3.7.0"
   dependencies:
-    cross-fetch: ^3.1.5
+    cross-fetch: ^3.0.6
     extract-files: ^9.0.0
     form-data: ^3.0.0
   peerDependencies:
     graphql: 14 - 16
-  checksum: 3124afd01aee781cd5a2e9ac30063526b677a6754032566104fc36270b5f9be03f17a32e49f34c71ca968d533151550c37f7a0194d11c36ff59977bd73e2abc3
+  checksum: db3800cc4ee884cd1514d7d5eafafb9ed27694278fdddd7402345754a7d25e7d713246c72aa510b439b6df2633b74f2cf74fb36864a22a857d5fb2de1cf0b4d8
   languageName: node
   linkType: hard
 
