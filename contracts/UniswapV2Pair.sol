@@ -38,8 +38,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     uint256 public override kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
     // track flowrates
-    uint public totalFlow0;
-    uint public totalFlow1;
+    //uint public totalFlow0;
+    //uint public totalFlow1;
 
     // for TWAP balance tracking (use blockTimestampLast)
     uint public twap0CumulativeLast;
@@ -77,7 +77,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     }
 
     function getReservesAtTime(uint256 time) public view returns (uint _reserve0, uint _reserve1) {
-        uint32 blockTimestamp = uint32(block.timestamp % 2**32);
+        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
+        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        uint32 blockTimestamp = uint32(time % 2**32);
         uint32 timeElapsed = blockTimestamp - blockTimestampLast;
         uint _kLast = kLast;
         uint _totalFlow0 = totalFlow0;
@@ -97,10 +99,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             _reserve0 = reserve0 + totalAmount0;
             _reserve1 = _kLast / _reserve0;
         } else if (totalFlow1 > 0) {
-            uint totalAmount1 = totalFlow1 + timeElapsed;
+            uint totalAmount1 = totalFlow1 * timeElapsed;
             _reserve1 = reserve1 + totalAmount1;
             _reserve0 = _kLast / _reserve1;
+        } else {
+            (_reserve0, _reserve1, ) = getReserves();
         }
+    }
+
+    function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1) {
+        (_reserve0, _reserve1) = getReservesAtTime(block.timestamp);
     }
 
     function _safeTransfer(address token, address to, uint256 value) private {
@@ -215,7 +223,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         _mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
+        //if (feeOn)
+        kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
     }
 
@@ -359,6 +368,15 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // temp notes
         // swap checks could be off, because it simply checks pool balances, so fix this
         // ideally we'd write some input agnostic approach for streaming in the same way that v2 works with balances, but this will be difficult
+
+        // get realtime reserves
+        (uint _reserve0, uint _reserve1) = getRealTimeReserves();
+
+        // update blockTimestampLast
+        blockTimestampLast = uint32(block.timestamp % 2 ** 32);
+        
+        // update kLast
+        kLast = _reserve0 * _reserve1;
     }
 
     function afterAgreementCreated(

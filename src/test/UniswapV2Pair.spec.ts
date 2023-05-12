@@ -23,6 +23,12 @@ let tokenB
 // Test Accounts
 let owner
 
+// delay helper function
+const delay = async (seconds: number) => {
+  await ethers.provider.send("evm_increaseTime", [seconds]);
+  await ethers.provider.send("evm_mine", []);
+};
+
 before(async function () {
     
     // get hardhat accounts
@@ -536,5 +542,47 @@ describe("UniswapV2Pair", () => {
     expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
       BigNumber.from(1000).add("250000187312969")
     );
+  });
+
+  it("twap:token0", async () => {
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
+
+    const token0Amount = expandTo18Decimals(10);
+    const token1Amount = expandTo18Decimals(10);
+    await addLiquidity(
+      token0,
+      token1,
+      pair,
+      wallet,
+      token0Amount,
+      token1Amount
+    );
+
+    // check initial reserves (shouldn't have changed)
+    let realTimeReserves =  await pair.getRealTimeReserves();
+    expect(realTimeReserves._reserve0).to.equal(token0Amount);
+    expect(realTimeReserves._reserve1).to.equal(token1Amount);
+
+    // create a stream
+    const flowRate = BigNumber.from("1000000000");
+    const createFlowOperation = token0.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate
+    });
+    const txnResponse = await createFlowOperation.exec(wallet);
+    const txn = await txnResponse.wait();
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+
+    // check reserves (1-2 sec may have passed, so check timestamp)
+    realTimeReserves =  await pair.getRealTimeReserves();
+    let time = (await ethers.provider.getBlock('latest')).timestamp;
+    let dt = time - timeStart;
+    const totalAmountA = flowRate.mul(dt);
+    let k = token0Amount.mul(token1Amount);
+    let a = token0Amount.add(totalAmountA);
+    let b = k.div(a);
+    expect(realTimeReserves._reserve0).to.equal(a);
+    expect(realTimeReserves._reserve1).to.equal(b);
   });
 });
