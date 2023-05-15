@@ -37,13 +37,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     uint256 public override price1CumulativeLast;
     uint256 public override kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
-    // track flowrates
-    //uint public totalFlow0;
-    //uint public totalFlow1;
-
     // for TWAP balance tracking (use blockTimestampLast)
     uint public twap0CumulativeLast;
     uint public twap1CumulativeLast;
+    mapping (address => uint) userStartingCumulatives;
 
     // superfluid
     using CFAv1Library for CFAv1Library.InitData;
@@ -76,16 +73,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         _blockTimestampLast = blockTimestampLast;
     }
 
-    function _getReservesAtTime(uint32 time, uint256 totalFlow0, uint256 totalFlow1) public view returns (uint _reserve0, uint _reserve1) {
+    function _getReservesAtTime(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint32 timeElapsed = time - blockTimestampLast;
         uint _kLast = kLast;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
             // use approximation:
-            uint totalAmount0 = totalFlow0 * timeElapsed;
-            uint totalAmount1 = totalFlow1 * timeElapsed;
-            _reserve0 = Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1));
-            _reserve1 = _kLast / _reserve0;
+            uint112 totalAmount0 = totalFlow0 * timeElapsed;
+            uint112 totalAmount1 = totalFlow1 * timeElapsed;
+            // not sure if these uint256->uint112 downcasts are safe:
+            _reserve0 = uint112(Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1)));
+            _reserve1 = uint112(_kLast / _reserve0);
 
             // paradigm's formula for TWAMM has precision issues + high gas consumption:
             /*int resChange0 = int256(Math.sqrt(reserve0 * totalAmount1));
@@ -95,21 +93,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             _reserve0 = uint256(int(Math.sqrt((_kLast * totalAmount0) / totalAmount1)) * (ePower + c) / (ePower - c));
             _reserve1 = _kLast / _reserve0;*/
         } else if (totalFlow0 > 0 && timeElapsed > 0) {
-            uint totalAmount0 = totalFlow0 * timeElapsed;
+            // use x * y = k
+            uint112 totalAmount0 = totalFlow0 * timeElapsed;
             _reserve0 = reserve0 + totalAmount0;
-            _reserve1 = _kLast / _reserve0;
+            _reserve1 = uint112(_kLast / _reserve0); // should be a safe downcast
         } else if (totalFlow1 > 0 && timeElapsed > 0) {
-            uint totalAmount1 = totalFlow1 * timeElapsed;
+            // use x * y = k
+            uint112 totalAmount1 = totalFlow1 * timeElapsed;
             _reserve1 = reserve1 + totalAmount1;
-            _reserve0 = _kLast / _reserve1;
+            _reserve0 = uint112(_kLast / _reserve1); // should be a safe downcast
         } else {
+            // get static reserves
             (_reserve0, _reserve1, ) = getReserves();
         }
     }
 
     function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1) {
-        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
-        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
     }
 
@@ -370,19 +371,21 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // ideally we'd write some input agnostic approach for streaming in the same way that v2 works with balances, but this will be difficult
 
         // decode previous net flowrestes
-        (uint256 totalFlow0, uint256 totalFlow1) = abi.decode(_cbdata, (uint256, uint256));
+        (uint112 totalFlow0, uint112 totalFlow1) = abi.decode(_cbdata, (uint112, uint112));
 
         // get time
         uint32 time = uint32(block.timestamp % 2 ** 32);
 
-        // get realtime reserves based on old flowrates
-        (uint _reserve0, uint _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        // get realtime reserves based on old flowrates and settle reserves
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        reserve0 = _reserve0;
+        reserve1 = _reserve1;
 
         // update blockTimestampLast
         blockTimestampLast = time;
         
         // update kLast
-        kLast = _reserve0 * _reserve1;
+        kLast = uint256(_reserve0) * _reserve1;
     }
 
     function beforeAgreementCreated(
@@ -392,8 +395,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         bytes calldata, // agreementData
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
-        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
-        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
 
         return abi.encode(totalFlow0, totalFlow1);
     }
@@ -417,8 +420,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         bytes calldata, // agreementData
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
-        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
-        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
 
         return abi.encode(totalFlow0, totalFlow1);
     }
@@ -442,8 +445,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         bytes calldata, // agreementData
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
-        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
-        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
 
         return abi.encode(totalFlow0, totalFlow1);
     }

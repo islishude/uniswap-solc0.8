@@ -720,57 +720,6 @@ describe("UniswapV2Pair", () => {
     const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
     const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
 
-    const checkDynamicReserves2 = async(dt: number) => {
-      let realTimeReserves =  await pair.getRealTimeReserves();
-      let k = token0Amount.mul(token1Amount);
-      console.log(token0Amount, k)
-
-      const c = (
-        sqrtBN(token0Amount.mul(flowRate1.mul(dt)))
-        .sub(
-          sqrtBN(token1Amount.mul(flowRate0.mul(dt)))
-        )
-        .div(
-          sqrtBN(token0Amount.mul(flowRate1.mul(dt)))
-          .add(
-            sqrtBN(token1Amount.mul(flowRate0.mul(dt)))
-          )
-        )
-      );
-      console.log(c)
-
-      const a = (
-          sqrtBN(k.mul(flowRate0.mul(dt)).div(flowRate1.mul(dt))) 
-          .mul(
-            BigNumber.from(3).pow(
-              BigNumber.from(2).mul(
-                sqrtBN(flowRate0.mul(dt).mul(flowRate1.mul(dt)).div(k))
-              )
-            )
-            .add(c)
-          )
-          .div(
-            BigNumber.from(3).pow(
-              BigNumber.from(2).mul(
-                sqrtBN(flowRate0.mul(dt).mul(flowRate1.mul(dt)).div(k))
-              )
-            )
-            .sub(c)
-          )
-      );
-      const b = k.div(a);
-
-                console.log(realTimeReserves)
-
-      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
-      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
-      expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
-      expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
-
-      console.log('RT RES: ', realTimeReserves._reserve0, a)
-      console.log('RT RES: ', realTimeReserves._reserve1, b)
-    }
-
     //////////////////////////////////////////////////////
     //                                                  //
     //   ref. https://www.paradigm.xyz/2021/07/twamm    //
@@ -778,7 +727,6 @@ describe("UniswapV2Pair", () => {
     //////////////////////////////////////////////////////
     const checkDynamicReservesParadigmFormula = async(dt: number) => {
       let realTimeReserves =  await pair.getRealTimeReserves();
-      console.log(realTimeReserves)
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
       const totalFlowA = parseFloat(flowRate0.toString());
@@ -813,8 +761,6 @@ describe("UniswapV2Pair", () => {
     //////////////////////////////////////////////////////////
     const checkDynamicReservesParadigmApprox = async(dt: number) => {
       let realTimeReserves =  await pair.getRealTimeReserves();
-      console.log(realTimeReserves)
-
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
       const totalFlowA = parseFloat(flowRate0.toString());
