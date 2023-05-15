@@ -29,6 +29,21 @@ const delay = async (seconds: number) => {
   await ethers.provider.send("evm_mine", []);
 };
 
+// babylonian square root
+function sqrtBN(value: BigNumber) {
+  if (value.isZero()) return BigNumber.from(0);
+
+  let x = BigNumber.from(1);
+  let y = value;
+
+  while (x.lt(y)) {
+    y = x.add(y).div(2);
+    x = value.div(y);
+  }
+
+  return y;
+}
+
 before(async function () {
     
     // get hardhat accounts
@@ -574,15 +589,271 @@ describe("UniswapV2Pair", () => {
     const txn = await txnResponse.wait();
     const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
 
+    // get amount after buffer
+    const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+
     // check reserves (1-2 sec may have passed, so check timestamp)
     realTimeReserves =  await pair.getRealTimeReserves();
     let time = (await ethers.provider.getBlock('latest')).timestamp;
     let dt = time - timeStart;
-    const totalAmountA = flowRate.mul(dt);
+    let totalAmountA = flowRate.mul(dt);
     let k = token0Amount.mul(token1Amount);
     let a = token0Amount.add(totalAmountA);
     let b = k.div(a);
+    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
     expect(realTimeReserves._reserve0).to.equal(a);
+    expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+
+    // skip ahead and check again
+    await delay(600);
+    realTimeReserves =  await pair.getRealTimeReserves();
+    time = (await ethers.provider.getBlock('latest')).timestamp;
+    dt = time - timeStart;
+    totalAmountA = flowRate.mul(dt);
+    a = token0Amount.add(totalAmountA);
+    b = k.div(a);
+    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
+    expect(realTimeReserves._reserve0).to.equal(a);
+    expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+  });
+
+  it("twap:token1", async () => {
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
+
+    const token0Amount = expandTo18Decimals(10);
+    const token1Amount = expandTo18Decimals(10);
+    await addLiquidity(
+      token0,
+      token1,
+      pair,
+      wallet,
+      token0Amount,
+      token1Amount
+    );
+
+    // check initial reserves (shouldn't have changed)
+    let realTimeReserves =  await pair.getRealTimeReserves();
+    expect(realTimeReserves._reserve0).to.equal(token0Amount);
+    expect(realTimeReserves._reserve1).to.equal(token1Amount);
+
+    // create a stream
+    const flowRate = BigNumber.from("1000000000");
+    const createFlowOperation = token1.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate
+    });
+    const txnResponse = await createFlowOperation.exec(wallet);
+    const txn = await txnResponse.wait();
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+
+    // get amount after buffer
+    const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+
+    // check reserves (1-2 sec may have passed, so check timestamp)
+    realTimeReserves =  await pair.getRealTimeReserves();
+    let time = (await ethers.provider.getBlock('latest')).timestamp;
+    let dt = time - timeStart;
+    let totalAmountB = flowRate.mul(dt);
+    let k = token0Amount.mul(token1Amount);
+    let b = token1Amount.add(totalAmountB);
+    let a = k.div(b);
+    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
     expect(realTimeReserves._reserve1).to.equal(b);
+    expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+
+    // skip ahead and check again
+    await delay(600);
+    realTimeReserves =  await pair.getRealTimeReserves();
+    time = (await ethers.provider.getBlock('latest')).timestamp;
+    dt = time - timeStart;
+    totalAmountB = flowRate.mul(dt);
+    b = token1Amount.add(totalAmountB);
+    a = k.div(b);
+    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
+    expect(realTimeReserves._reserve1).to.equal(b);
+    expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+  });
+
+  it("twap:both_tokens", async () => {
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
+
+    const token0Amount = expandTo18Decimals(10);
+    const token1Amount = expandTo18Decimals(10);
+    await addLiquidity(
+      token0,
+      token1,
+      pair,
+      wallet,
+      token0Amount,
+      token1Amount
+    );
+
+    // check initial reserves (shouldn't have changed)
+    let realTimeReserves =  await pair.getRealTimeReserves();
+    expect(realTimeReserves._reserve0).to.equal(token0Amount);
+    expect(realTimeReserves._reserve1).to.equal(token1Amount);
+
+    // create a stream of token0
+    const flowRate0 = BigNumber.from("1000000000");
+    const createFlowOperation0 = token0.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate0
+    });
+
+    // create a stream of token1
+    const flowRate1 = BigNumber.from("500000000");
+    const createFlowOperation1 = token1.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate1
+    });
+
+    // batch both together
+    const batchCall = sf.batchCall([createFlowOperation0, createFlowOperation1]);
+    const txnResponse = await batchCall.exec(wallet);
+    const txn = await txnResponse.wait();
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+
+    // get amounts after buffer
+    const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+    const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+
+    const checkDynamicReserves2 = async(dt: number) => {
+      let realTimeReserves =  await pair.getRealTimeReserves();
+      let k = token0Amount.mul(token1Amount);
+      console.log(token0Amount, k)
+
+      const c = (
+        sqrtBN(token0Amount.mul(flowRate1.mul(dt)))
+        .sub(
+          sqrtBN(token1Amount.mul(flowRate0.mul(dt)))
+        )
+        .div(
+          sqrtBN(token0Amount.mul(flowRate1.mul(dt)))
+          .add(
+            sqrtBN(token1Amount.mul(flowRate0.mul(dt)))
+          )
+        )
+      );
+      console.log(c)
+
+      const a = (
+          sqrtBN(k.mul(flowRate0.mul(dt)).div(flowRate1.mul(dt))) 
+          .mul(
+            BigNumber.from(3).pow(
+              BigNumber.from(2).mul(
+                sqrtBN(flowRate0.mul(dt).mul(flowRate1.mul(dt)).div(k))
+              )
+            )
+            .add(c)
+          )
+          .div(
+            BigNumber.from(3).pow(
+              BigNumber.from(2).mul(
+                sqrtBN(flowRate0.mul(dt).mul(flowRate1.mul(dt)).div(k))
+              )
+            )
+            .sub(c)
+          )
+      );
+      const b = k.div(a);
+
+                console.log(realTimeReserves)
+
+      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
+      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
+      expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+      expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+
+      console.log('RT RES: ', realTimeReserves._reserve0, a)
+      console.log('RT RES: ', realTimeReserves._reserve1, b)
+    }
+
+    //////////////////////////////////////////////////////
+    //                                                  //
+    //   ref. https://www.paradigm.xyz/2021/07/twamm    //
+    //                                                  //
+    //////////////////////////////////////////////////////
+    const checkDynamicReservesParadigmFormula = async(dt: number) => {
+      let realTimeReserves =  await pair.getRealTimeReserves();
+      console.log(realTimeReserves)
+      const poolReserveA = parseFloat(token0Amount.toString());
+      const poolReserveB = parseFloat(token1Amount.toString());
+      const totalFlowA = parseFloat(flowRate0.toString());
+      const totalFlowB = parseFloat(flowRate1.toString());
+      const k = poolReserveA * poolReserveB;
+
+      const c = (
+        Math.sqrt(poolReserveA * (totalFlowB * dt)) - Math.sqrt(poolReserveB * (totalFlowA * dt))) 
+        / 
+        (Math.sqrt(poolReserveA * (totalFlowB * dt)) + Math.sqrt(poolReserveB * (totalFlowA * dt))
+      );
+      const a = (
+          Math.sqrt((k * (totalFlowA * dt)) / (totalFlowB * dt)) 
+          * 
+          (Math.pow(Math.E, (2 * Math.sqrt(((totalFlowA * dt) * (totalFlowB * dt)) / k))) + c) 
+          / 
+          (Math.pow(Math.E, (2 * Math.sqrt(((totalFlowA * dt) * (totalFlowB * dt)) / k))) - c)
+      );
+      const b = k / a;
+
+      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
+      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
+      expect(realTimeReserves._reserve0).to.be.within(BigNumber.from((a * 0.9999999999).toString()), BigNumber.from(a.toString()));
+      expect(realTimeReserves._reserve1).to.be.within(BigNumber.from((b * 0.999).toString()), BigNumber.from(b.toString()));
+    }
+
+    //////////////////////////////////////////////////////////
+    //                                                      //
+    //    using approximation:                              //
+    //    a = √(k * (A + (r_A * dt)) / (B + (r_B * dt)))    //
+    //                                                      //
+    //////////////////////////////////////////////////////////
+    const checkDynamicReservesParadigmApprox = async(dt: number) => {
+      let realTimeReserves =  await pair.getRealTimeReserves();
+      console.log(realTimeReserves)
+
+      const poolReserveA = parseFloat(token0Amount.toString());
+      const poolReserveB = parseFloat(token1Amount.toString());
+      const totalFlowA = parseFloat(flowRate0.toString());
+      const totalFlowB = parseFloat(flowRate1.toString());
+      const k = poolReserveA * poolReserveB;
+
+      const a = (
+        Math.sqrt(k * (poolReserveA + (totalFlowA * dt)) / (poolReserveB + (totalFlowB * dt)))
+      );
+      const b = k / a;
+
+      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
+      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
+      expect(realTimeReserves._reserve0).to.be.within(BigNumber.from((a * 0.9999999999).toString()), BigNumber.from((a * 1.00000001).toString()));
+      expect(realTimeReserves._reserve1).to.be.within(BigNumber.from((b * 0.9999999999).toString()), BigNumber.from((b * 1.00000001).toString()));
+    }
+
+    const checkStaticReserves = async() => {
+      let realTimeReserves =  await pair.getRealTimeReserves();
+      expect(realTimeReserves._reserve0).to.equal(token0Amount);
+      expect(realTimeReserves._reserve1).to.equal(token1Amount);
+    }
+
+    const checkReserves = async() => {
+      let time = (await ethers.provider.getBlock('latest')).timestamp;
+      let dt = time - timeStart;
+
+      if (dt > 0) {
+        await checkDynamicReservesParadigmApprox(dt);
+      } else {
+        await checkStaticReserves();
+      }
+    }
+
+    // check reserves (1-2 sec may have passed, so check timestamp)
+    await checkReserves();
+
+    // skip ahead and check again
+    await delay(600);
+    await checkReserves();
   });
 });

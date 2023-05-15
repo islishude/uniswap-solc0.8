@@ -76,29 +76,29 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         _blockTimestampLast = blockTimestampLast;
     }
 
-    function getReservesAtTime(uint256 time) public view returns (uint _reserve0, uint _reserve1) {
-        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
-        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
-        uint32 blockTimestamp = uint32(time % 2**32);
-        uint32 timeElapsed = blockTimestamp - blockTimestampLast;
+    function _getReservesAtTime(uint32 time, uint256 totalFlow0, uint256 totalFlow1) public view returns (uint _reserve0, uint _reserve1) {
+        uint32 timeElapsed = time - blockTimestampLast;
         uint _kLast = kLast;
-        uint _totalFlow0 = totalFlow0;
-        uint _totalFlow1 = totalFlow1;
 
-        if (_totalFlow0 > 0 && _totalFlow1 > 0) {
+        if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
+            // use approximation:
             uint totalAmount0 = totalFlow0 * timeElapsed;
             uint totalAmount1 = totalFlow1 * timeElapsed;
-            uint resChange0 = Math.sqrt(reserve0 * totalAmount1);
-            uint resChange1 = Math.sqrt(reserve1 * totalAmount0);
-            uint c = (resChange0 - resChange1) * 1e18 / (resChange0 + resChange1);
-            uint ePower = 3 ** (2 * Math.sqrt(totalFlow0 * totalFlow1 / _kLast));
-            _reserve0 = Math.sqrt((_kLast * totalAmount0) / totalAmount1) * (ePower + c) / ePower - c;
+            _reserve0 = Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1));
             _reserve1 = _kLast / _reserve0;
-        } else if (totalFlow0 > 0) {
+
+            // paradigm's formula for TWAMM has precision issues + high gas consumption:
+            /*int resChange0 = int256(Math.sqrt(reserve0 * totalAmount1));
+            int resChange1 = int256(Math.sqrt(reserve1 * totalAmount0));
+            int c = (resChange0 - resChange1) * 1e36 / (resChange0 + resChange1);
+            int ePower = int(3 ** (2 * Math.sqrt(totalFlow0 * totalFlow1 / _kLast))) * 1e36;
+            _reserve0 = uint256(int(Math.sqrt((_kLast * totalAmount0) / totalAmount1)) * (ePower + c) / (ePower - c));
+            _reserve1 = _kLast / _reserve0;*/
+        } else if (totalFlow0 > 0 && timeElapsed > 0) {
             uint totalAmount0 = totalFlow0 * timeElapsed;
             _reserve0 = reserve0 + totalAmount0;
             _reserve1 = _kLast / _reserve0;
-        } else if (totalFlow1 > 0) {
+        } else if (totalFlow1 > 0 && timeElapsed > 0) {
             uint totalAmount1 = totalFlow1 * timeElapsed;
             _reserve1 = reserve1 + totalAmount1;
             _reserve0 = _kLast / _reserve1;
@@ -108,7 +108,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     }
 
     function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1) {
-        (_reserve0, _reserve1) = getReservesAtTime(block.timestamp);
+        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
+        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+        (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
     }
 
     function _safeTransfer(address token, address to, uint256 value) private {
@@ -129,10 +131,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         cfa = IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)));
         cfaV1 = CFAv1Library.InitData(host, cfa);
 
-        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL |
-            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_UPDATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_TERMINATED_NOOP;
+        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL;
 
         host.registerApp(configWord);
     }
@@ -358,7 +357,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
     function _handleCallback(
         ISuperToken _superToken,
-        bytes calldata _agreementData
+        bytes calldata, //_agreementData,
+        bytes calldata _cbdata
     ) internal {
         require(
             address(_superToken) == address(token0) || address(_superToken) == address(token1),
@@ -369,14 +369,33 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // swap checks could be off, because it simply checks pool balances, so fix this
         // ideally we'd write some input agnostic approach for streaming in the same way that v2 works with balances, but this will be difficult
 
-        // get realtime reserves
-        (uint _reserve0, uint _reserve1) = getRealTimeReserves();
+        // decode previous net flowrestes
+        (uint256 totalFlow0, uint256 totalFlow1) = abi.decode(_cbdata, (uint256, uint256));
+
+        // get time
+        uint32 time = uint32(block.timestamp % 2 ** 32);
+
+        // get realtime reserves based on old flowrates
+        (uint _reserve0, uint _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
 
         // update blockTimestampLast
-        blockTimestampLast = uint32(block.timestamp % 2 ** 32);
+        blockTimestampLast = time;
         
         // update kLast
         kLast = _reserve0 * _reserve1;
+    }
+
+    function beforeAgreementCreated(
+        ISuperToken, // _superToken,
+        address, // agreementClass
+        bytes32, // agreementId
+        bytes calldata, // agreementData
+        bytes calldata // _ctx
+    ) external view virtual override returns (bytes memory) {
+        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
+        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+
+        return abi.encode(totalFlow0, totalFlow1);
     }
 
     function afterAgreementCreated(
@@ -384,11 +403,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         address, //_agreementClass,
         bytes32, //_agreementId
         bytes calldata _agreementData,
-        bytes calldata, //_cbdata,
+        bytes calldata _cbdata,
         bytes calldata _ctx
     ) external override onlyHost returns (bytes memory newCtx) {
-        _handleCallback(_superToken, _agreementData);
+        _handleCallback(_superToken, _agreementData, _cbdata);
         newCtx = _ctx;
+    }
+
+    function beforeAgreementUpdated(
+        ISuperToken, // _superToken,
+        address, // agreementClass
+        bytes32, // agreementId
+        bytes calldata, // agreementData
+        bytes calldata // _ctx
+    ) external view virtual override returns (bytes memory) {
+        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
+        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+
+        return abi.encode(totalFlow0, totalFlow1);
     }
 
     function afterAgreementUpdated(
@@ -396,11 +428,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         address, //_agreementClass,
         bytes32, // _agreementId,
         bytes calldata _agreementData,
-        bytes calldata, //_cbdata,
+        bytes calldata _cbdata,
         bytes calldata _ctx
     ) external override onlyHost returns (bytes memory newCtx) {
-        _handleCallback(_superToken, _agreementData);
+        _handleCallback(_superToken, _agreementData, _cbdata);
         newCtx = _ctx;
+    }
+
+    function beforeAgreementTerminated(
+        ISuperToken, //_superToken,
+        address, // agreementClass
+        bytes32, // agreementId
+        bytes calldata, // agreementData
+        bytes calldata // _ctx
+    ) external view virtual override returns (bytes memory) {
+        uint256 totalFlow0 = uint256(uint96(cfa.getNetFlow(token0, address(this))));
+        uint256 totalFlow1 = uint256(uint96(cfa.getNetFlow(token1, address(this))));
+
+        return abi.encode(totalFlow0, totalFlow1);
     }
 
     function afterAgreementTerminated(
@@ -408,10 +453,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         address, //_agreementClass,
         bytes32, // _agreementId,
         bytes calldata _agreementData,
-        bytes calldata, //_cbdata,
+        bytes calldata _cbdata,
         bytes calldata _ctx
     ) external override onlyHost returns (bytes memory newCtx) {
-        _handleCallback(_superToken, _agreementData);
+        _handleCallback(_superToken, _agreementData, _cbdata);
         newCtx = _ctx;
     }
 
