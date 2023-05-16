@@ -40,7 +40,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     // for TWAP balance tracking (use blockTimestampLast)
     uint public twap0CumulativeLast;
     uint public twap1CumulativeLast;
-    mapping (address => uint) userStartingCumulatives;
+    mapping (address => uint) userStartingCumulatives0;
+    mapping (address => uint) userStartingCumulatives1;
 
     // superfluid
     using CFAv1Library for CFAv1Library.InitData;
@@ -112,6 +113,31 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+    }
+
+    function _getUserBalancesAtTime(address user, uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint balance0, uint balance1) {
+        uint32 timeElapsed = time - blockTimestampLast;
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        uint _twap0CumulativeLast = twap0CumulativeLast;
+        uint _twap1CumulativeLast = twap1CumulativeLast;
+        if (totalFlow1 > 0) {
+            _twap0CumulativeLast += uint256(UQ112x112.encode((reserve0 - _reserve0) + (totalFlow0 * timeElapsed)).uqdiv(totalFlow1)) * timeElapsed;
+        }
+        if (totalFlow0 > 0) {
+            _twap1CumulativeLast += uint256(UQ112x112.encode((reserve1 - _reserve1) + (totalFlow1 * timeElapsed)).uqdiv(totalFlow0)) * timeElapsed;
+        }
+
+        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token0, user, address(this));
+
+        balance0 = uint256(uint96(flow1)) * (_twap0CumulativeLast - userStartingCumulatives0[user]); // flow in is always positive
+        balance1 = uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]);
+    }
+
+    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1) {
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (balance0, balance1) = _getUserBalancesAtTime(user, uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
     }
 
     function _safeTransfer(address token, address to, uint256 value) private {
@@ -258,6 +284,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
+    // TODO: have some function similar to the getReserves() function, which outputs the reserves + streamed amounts
+    // e.g. _reserve0 = reserve0 + totalFlow0 * timeElapsed
+    // ****** difference between this and _getReservesAtTime is it returns this for both reserves, rather than calculating the other relative to k
+    // and then get the difference between the actual balance and this === amountIn
     // this low-level function should be called from a contract which performs important safety checks
     function swap(
         uint256 amount0Out,
@@ -345,20 +375,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         );
     }
 
-    // 3 streaming cases:
-    // 1. create
-    // 2. update
-    // 3. delete
-    // for all:
-    //   1) settle reserves and cumulatives
-    //   2) update net flowrates and last update timestamp
-    //
-    // if update or delete:
-    //   3) send user their locked funds
-
     function _handleCallback(
         ISuperToken _superToken,
-        bytes calldata, //_agreementData,
+        bytes calldata _agreementData,
         bytes calldata _cbdata
     ) internal {
         require(
@@ -366,18 +385,34 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             "RedirectAll: token not in pool"
         );
 
-        // temp notes
-        // swap checks could be off, because it simply checks pool balances, so fix this
-        // ideally we'd write some input agnostic approach for streaming in the same way that v2 works with balances, but this will be difficult
-
         // decode previous net flowrestes
         (uint112 totalFlow0, uint112 totalFlow1) = abi.decode(_cbdata, (uint112, uint112));
 
         // get time
         uint32 time = uint32(block.timestamp % 2 ** 32);
+        uint32 timeElapsed = time - blockTimestampLast;
 
-        // get realtime reserves based on old flowrates and settle reserves
+        // get realtime reserves based on old flowrates
         (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+
+        // update cumulatives
+        if (totalFlow1 > 0) {
+            twap0CumulativeLast += uint256(UQ112x112.encode((reserve0 - _reserve0) + (totalFlow0 * timeElapsed)).uqdiv(totalFlow1)) * timeElapsed;
+        }
+        if (totalFlow0 > 0) {
+            twap1CumulativeLast += uint256(UQ112x112.encode((reserve1 - _reserve1) + (totalFlow1 * timeElapsed)).uqdiv(totalFlow0)) * timeElapsed;
+        }
+
+        // set user starting cumulative
+        (address user, ) = abi.decode(_agreementData, (address, address));
+        if (_superToken == token0) {
+            userStartingCumulatives1[user] = twap1CumulativeLast;
+        }
+        if (_superToken == token1) {
+            userStartingCumulatives0[user] = twap0CumulativeLast;
+        }
+
+        // settle reserves
         reserve0 = _reserve0;
         reserve1 = _reserve1;
 
@@ -385,6 +420,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         blockTimestampLast = time;
         
         // update kLast
+        // TODO: should actually check k is constant here?
         kLast = uint256(_reserve0) * _reserve1;
     }
 

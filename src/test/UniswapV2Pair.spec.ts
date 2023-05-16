@@ -797,9 +797,11 @@ describe("UniswapV2Pair", () => {
 
     // check reserves (1-2 sec may have passed, so check timestamp)
     await checkReserves();
+    console.log(await pair.getRealTimeUserBalances(wallet.address));
 
     // skip ahead and check again
     await delay(600);
     await checkReserves();
+    console.log(await pair.getRealTimeUserBalances(wallet.address));
   });
 });
