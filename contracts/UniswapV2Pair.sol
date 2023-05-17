@@ -109,35 +109,37 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         }
     }
 
-    function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1) {
+    function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1, uint time) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        time = block.timestamp;
     }
 
     function _getUserBalancesAtTime(address user, uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint balance0, uint balance1) {
         uint32 timeElapsed = time - blockTimestampLast;
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
         uint _twap0CumulativeLast = twap0CumulativeLast;
         uint _twap1CumulativeLast = twap1CumulativeLast;
         if (totalFlow1 > 0) {
-            _twap0CumulativeLast += uint256(UQ112x112.encode((reserve0 - _reserve0) + (totalFlow0 * timeElapsed)).uqdiv(totalFlow1)) * timeElapsed;
+            _twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
         }
         if (totalFlow0 > 0) {
-            _twap1CumulativeLast += uint256(UQ112x112.encode((reserve1 - _reserve1) + (totalFlow1 * timeElapsed)).uqdiv(totalFlow0)) * timeElapsed;
+            _twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
         }
 
         (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
-        (, int96 flow1, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
 
-        balance0 = uint256(uint96(flow1)) * (_twap0CumulativeLast - userStartingCumulatives0[user]); // flow in is always positive
-        balance1 = uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]);
+        balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (_twap0CumulativeLast - userStartingCumulatives0[user])); // flow in is always positive
+        balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]));
     }
 
-    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1) {
+    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (balance0, balance1) = _getUserBalancesAtTime(user, uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        time = block.timestamp;
     }
 
     function _safeTransfer(address token, address to, uint256 value) private {
@@ -288,6 +290,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     // e.g. _reserve0 = reserve0 + totalFlow0 * timeElapsed
     // ****** difference between this and _getReservesAtTime is it returns this for both reserves, rather than calculating the other relative to k
     // and then get the difference between the actual balance and this === amountIn
+
     // this low-level function should be called from a contract which performs important safety checks
     function swap(
         uint256 amount0Out,
@@ -397,10 +400,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
         // update cumulatives
         if (totalFlow1 > 0) {
-            twap0CumulativeLast += uint256(UQ112x112.encode((reserve0 - _reserve0) + (totalFlow0 * timeElapsed)).uqdiv(totalFlow1)) * timeElapsed;
+            twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
         }
         if (totalFlow0 > 0) {
-            twap1CumulativeLast += uint256(UQ112x112.encode((reserve1 - _reserve1) + (totalFlow1 * timeElapsed)).uqdiv(totalFlow0)) * timeElapsed;
+            twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
         }
 
         // set user starting cumulative

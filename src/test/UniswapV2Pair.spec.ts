@@ -592,29 +592,49 @@ describe("UniswapV2Pair", () => {
     // get amount after buffer
     const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
 
+    const checkStaticReserves = async() => {
+      const realTimeReserves =  await pair.getRealTimeReserves();
+      expect(realTimeReserves._reserve0).to.equal(token0Amount);
+      expect(realTimeReserves._reserve1).to.equal(token1Amount);
+    }
+
+    const checkReserves = async() => {
+      const time = (await ethers.provider.getBlock('latest')).timestamp;
+      const dt = time - timeStart;
+
+      if (dt > 0) {
+        const realTimeReserves =  await pair.getRealTimeReserves();
+        const totalAmountA = flowRate.mul(dt);
+        const k = token0Amount.mul(token1Amount);
+        const a = token0Amount.add(totalAmountA);
+        const b = k.div(a);
+        expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
+        expect(realTimeReserves._reserve0).to.equal(a);
+        expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+      } else {
+        await checkStaticReserves();
+      }
+    }
+
+    const checkBalances = async() => {
+      const realTimeReserves =  await pair.getRealTimeReserves();
+      const poolBalance1 = BigNumber.from(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
+      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+
+      // perfect case:          (reserve + all user balances) = poolBalance
+      // never allowed:         (reserve + all user balances) > poolBalance
+      // dust amounts allowed:  (reserve + all user balances) < poolBalance
+      expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
+    }
+
     // check reserves (1-2 sec may have passed, so check timestamp)
-    realTimeReserves =  await pair.getRealTimeReserves();
-    let time = (await ethers.provider.getBlock('latest')).timestamp;
-    let dt = time - timeStart;
-    let totalAmountA = flowRate.mul(dt);
-    let k = token0Amount.mul(token1Amount);
-    let a = token0Amount.add(totalAmountA);
-    let b = k.div(a);
-    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
-    expect(realTimeReserves._reserve0).to.equal(a);
-    expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+    await checkReserves();
+    await checkBalances();
 
     // skip ahead and check again
     await delay(600);
-    realTimeReserves =  await pair.getRealTimeReserves();
-    time = (await ethers.provider.getBlock('latest')).timestamp;
-    dt = time - timeStart;
-    totalAmountA = flowRate.mul(dt);
-    a = token0Amount.add(totalAmountA);
-    b = k.div(a);
-    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
-    expect(realTimeReserves._reserve0).to.equal(a);
-    expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+    await checkReserves();
+    await checkBalances();
   });
 
   it("twap:token1", async () => {
@@ -650,29 +670,49 @@ describe("UniswapV2Pair", () => {
     // get amount after buffer
     const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
 
+    const checkStaticReserves = async() => {
+      const realTimeReserves =  await pair.getRealTimeReserves();
+      expect(realTimeReserves._reserve0).to.equal(token0Amount);
+      expect(realTimeReserves._reserve1).to.equal(token1Amount);
+    }
+
+    const checkReserves = async() => {
+      const time = (await ethers.provider.getBlock('latest')).timestamp;
+      const dt = time - timeStart;
+
+      if (dt > 0) {
+        const realTimeReserves =  await pair.getRealTimeReserves();
+        const totalAmountB = flowRate.mul(dt);
+        const k = token0Amount.mul(token1Amount);
+        const b = token1Amount.add(totalAmountB);
+        const a = k.div(b);
+        expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
+        expect(realTimeReserves._reserve1).to.equal(b);
+        expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+      } else {
+        await checkStaticReserves();
+      }
+    }
+
+    const checkBalances = async() => {
+      const realTimeReserves =  await pair.getRealTimeReserves();
+      const poolBalance0 = BigNumber.from(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
+      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+
+      // perfect case:          (reserve + all user balances) = poolBalance
+      // never allowed:         (reserve + all user balances) > poolBalance
+      // dust amounts allowed:  (reserve + all user balances) < poolBalance
+      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
+    }
+
     // check reserves (1-2 sec may have passed, so check timestamp)
-    realTimeReserves =  await pair.getRealTimeReserves();
-    let time = (await ethers.provider.getBlock('latest')).timestamp;
-    let dt = time - timeStart;
-    let totalAmountB = flowRate.mul(dt);
-    let k = token0Amount.mul(token1Amount);
-    let b = token1Amount.add(totalAmountB);
-    let a = k.div(b);
-    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
-    expect(realTimeReserves._reserve1).to.equal(b);
-    expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+    await checkReserves();
+    await checkBalances();
 
     // skip ahead and check again
     await delay(600);
-    realTimeReserves =  await pair.getRealTimeReserves();
-    time = (await ethers.provider.getBlock('latest')).timestamp;
-    dt = time - timeStart;
-    totalAmountB = flowRate.mul(dt);
-    b = token1Amount.add(totalAmountB);
-    a = k.div(b);
-    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
-    expect(realTimeReserves._reserve1).to.equal(b);
-    expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+    await checkReserves();
+    await checkBalances();
   });
 
   it("twap:both_tokens", async () => {
@@ -726,7 +766,7 @@ describe("UniswapV2Pair", () => {
     //                                                  //
     //////////////////////////////////////////////////////
     const checkDynamicReservesParadigmFormula = async(dt: number) => {
-      let realTimeReserves =  await pair.getRealTimeReserves();
+      const realTimeReserves =  await pair.getRealTimeReserves();
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
       const totalFlowA = parseFloat(flowRate0.toString());
@@ -760,7 +800,7 @@ describe("UniswapV2Pair", () => {
     //                                                      //
     //////////////////////////////////////////////////////////
     const checkDynamicReservesParadigmApprox = async(dt: number) => {
-      let realTimeReserves =  await pair.getRealTimeReserves();
+      const realTimeReserves =  await pair.getRealTimeReserves();
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
       const totalFlowA = parseFloat(flowRate0.toString());
@@ -779,14 +819,14 @@ describe("UniswapV2Pair", () => {
     }
 
     const checkStaticReserves = async() => {
-      let realTimeReserves =  await pair.getRealTimeReserves();
+      const realTimeReserves =  await pair.getRealTimeReserves();
       expect(realTimeReserves._reserve0).to.equal(token0Amount);
       expect(realTimeReserves._reserve1).to.equal(token1Amount);
     }
 
     const checkReserves = async() => {
-      let time = (await ethers.provider.getBlock('latest')).timestamp;
-      let dt = time - timeStart;
+      const time = (await ethers.provider.getBlock('latest')).timestamp;
+      const dt = time - timeStart;
 
       if (dt > 0) {
         await checkDynamicReservesParadigmApprox(dt);
@@ -795,13 +835,26 @@ describe("UniswapV2Pair", () => {
       }
     }
 
+    const checkBalances = async() => {
+      const realTimeReserves =  await pair.getRealTimeReserves();
+      const poolBalance0 = BigNumber.from(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
+      const poolBalance1 = BigNumber.from(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
+      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+
+      // perfect case:          (reserve + all user balances) = poolBalance
+      // never allowed:         (reserve + all user balances) > poolBalance
+      // dust amounts allowed:  (reserve + all user balances) < poolBalance
+      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
+      expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
+    }
+
     // check reserves (1-2 sec may have passed, so check timestamp)
     await checkReserves();
-    console.log(await pair.getRealTimeUserBalances(wallet.address));
+    await checkBalances();
 
     // skip ahead and check again
-    await delay(600);
+    await delay(60);
     await checkReserves();
-    console.log(await pair.getRealTimeUserBalances(wallet.address));
+    await checkBalances();
   });
 });
