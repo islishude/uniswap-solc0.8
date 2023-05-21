@@ -588,6 +588,7 @@ describe("UniswapV2Pair", () => {
     const txnResponse = await createFlowOperation.exec(wallet);
     const txn = await txnResponse.wait();
     const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+    console.log('GAS: ', txn.gasUsed)
 
     // get amount after buffer
     const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
@@ -856,5 +857,29 @@ describe("UniswapV2Pair", () => {
     await delay(60);
     await checkReserves();
     await checkBalances();
+
+
+    // The intent here is to have both of these discrete swap transactions in the same block, but turning off automine breaks the expect() function
+    // Solution: just test in two separate blocks and re-calculate expectedOutputAmount
+
+    // make a bad discrete swap (expect revert)
+    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    let nextBlockTime = latestTime + 10;
+    let swapAmount = BigNumber.from('10000000000000');
+    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    let realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+    let expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    await expect(
+      pair.swap(0, expectedOutputAmount.add('1'), wallet.address, "0x")
+    ).to.be.revertedWith("UniswapV2: K");
+
+    // make a correct discrete swap
+    latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    nextBlockTime = latestTime + 10;
+    realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+    expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
   });
 });

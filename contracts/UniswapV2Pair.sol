@@ -42,6 +42,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     uint public twap1CumulativeLast;
     mapping (address => uint) userStartingCumulatives0;
     mapping (address => uint) userStartingCumulatives1;
+    uint112 private totalSwappedFunds0;
+    uint112 private totalSwappedFunds1;
 
     // superfluid
     using CFAv1Library for CFAv1Library.InitData;
@@ -57,6 +59,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         unlocked = 0;
         _;
         unlocked = 1;
+    }
+
+    function getRealTimeIncomingFlowRates() public view returns (uint112 totalFlow0, uint112 totalFlow1, uint32 time) {
+        totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        time = uint32(block.timestamp % 2**32);
     }
 
     function getReserves()
@@ -109,7 +117,13 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         }
     }
 
-    function getRealTimeReserves() public view returns (uint _reserve0, uint _reserve1, uint time) {
+    function getReservesAtTime(uint32 time) public view returns (uint112 _reserve0, uint112 _reserve1) {
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+    }
+
+    function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint time) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
@@ -139,6 +153,28 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (balance0, balance1) = _getUserBalancesAtTime(user, uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        time = block.timestamp;
+    }
+
+    /*
+        Need way to get total amount of locked funds that aren't part of the reserves
+        - primarily used in the swap function, but also a good method to have for measuring accurate TVL
+        - couldn't find a good way to use the twap cumulatives for this
+    */
+    function _getTotalSwappedFundsAtTime(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) {
+        uint32 timeElapsed = time - blockTimestampLast;
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        _totalSwappedFunds0 = totalSwappedFunds0;
+        _totalSwappedFunds1 = totalSwappedFunds1;
+
+        _totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0;
+        _totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1;
+    }
+
+    function getRealTimeTotalSwappedFunds() public view returns (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1, uint time) {
+        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
+        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (_totalSwappedFunds0, _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
         time = block.timestamp;
     }
 
@@ -286,11 +322,6 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
-    // TODO: have some function similar to the getReserves() function, which outputs the reserves + streamed amounts
-    // e.g. _reserve0 = reserve0 + totalFlow0 * timeElapsed
-    // ****** difference between this and _getReservesAtTime is it returns this for both reserves, rather than calculating the other relative to k
-    // and then get the difference between the actual balance and this === amountIn
-
     // this low-level function should be called from a contract which performs important safety checks
     function swap(
         uint256 amount0Out,
@@ -302,11 +333,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             amount0Out > 0 || amount1Out > 0,
             "UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT"
         );
-        (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        require(
-            amount0Out < _reserve0 && amount1Out < _reserve1,
-            "UniswapV2: INSUFFICIENT_LIQUIDITY"
-        );
+        
+        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
 
         uint256 balance0;
         uint256 balance1;
@@ -324,9 +352,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     amount1Out,
                     data
                 );
-            balance0 = IERC20(_token0).balanceOf(address(this));
-            balance1 = IERC20(_token1).balanceOf(address(this));
+            (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(time, totalFlow0, totalFlow1);
+            balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0; // subtract locked funds that are not part of the reserves
+            balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
         }
+
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        require(
+            amount0Out < _reserve0 && amount1Out < _reserve1,
+            "UniswapV2: INSUFFICIENT_LIQUIDITY"
+        );
+
         uint256 amount0In = balance0 > _reserve0 - amount0Out
             ? balance0 - (_reserve0 - amount0Out)
             : 0;
@@ -336,7 +372,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         require(
             amount0In > 0 || amount1In > 0,
             "UniswapV2: INSUFFICIENT_INPUT_AMOUNT"
-        );
+        ); 
         {
             // scope for reserve{0,1}Adjusted, avoids stack too deep errors
             uint256 balance0Adjusted = balance0 * 1000 - amount0In * 3;
@@ -349,7 +385,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         }
 
         _update(balance0, balance1, _reserve0, _reserve1);
-        emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+        //emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
     // force balances to match reserves
@@ -409,9 +445,15 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // set user starting cumulative
         (address user, ) = abi.decode(_agreementData, (address, address));
         if (_superToken == token0) {
+            
+            // TODO: transfer swapped/locked funds to user before resetting their position
+
             userStartingCumulatives1[user] = twap1CumulativeLast;
         }
         if (_superToken == token1) {
+
+            // TODO: transfer swapped/locked funds to user before resetting their position
+
             userStartingCumulatives0[user] = twap0CumulativeLast;
         }
 
@@ -421,10 +463,6 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
         // update blockTimestampLast
         blockTimestampLast = time;
-        
-        // update kLast
-        // TODO: should actually check k is constant here?
-        kLast = uint256(_reserve0) * _reserve1;
     }
 
     function beforeAgreementCreated(
