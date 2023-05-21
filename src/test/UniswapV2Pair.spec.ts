@@ -588,7 +588,6 @@ describe("UniswapV2Pair", () => {
     const txnResponse = await createFlowOperation.exec(wallet);
     const txn = await txnResponse.wait();
     const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
-    console.log('GAS: ', txn.gasUsed)
 
     // get amount after buffer
     const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
@@ -636,6 +635,24 @@ describe("UniswapV2Pair", () => {
     await delay(600);
     await checkReserves();
     await checkBalances();
+
+    // cancel stream and check that swapped balance is withdrawn
+    const baseToken1Balance = expandTo18Decimals(10000).sub(token1Amount);
+    expect(BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken1Balance);
+    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    let nextBlockTime = latestTime + 10;
+    const expectedAmountsOut = await pair.getUserBalancesAtTime(wallet.address, nextBlockTime);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    const deleteFlowOperation = token0.deleteFlow({
+      sender: wallet.address,
+      receiver: pair.address
+    });
+    const txnResponse2 = await deleteFlowOperation.exec(wallet);
+    await txnResponse2.wait();
+    expect(BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken1Balance.add(expectedAmountsOut.balance1));
+
+    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
+    expect(newExpectedAmountsOut.balance1).to.be.equal(BigNumber.from(0));
   });
 
   it("twap:token1", async () => {
@@ -714,6 +731,24 @@ describe("UniswapV2Pair", () => {
     await delay(600);
     await checkReserves();
     await checkBalances();
+
+    // cancel stream and check that swapped balance is withdrawn
+    const baseToken0Balance = expandTo18Decimals(10000).sub(token0Amount);
+    expect(BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken0Balance);
+    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    let nextBlockTime = latestTime + 10;
+    const expectedAmountsOut = await pair.getUserBalancesAtTime(wallet.address, nextBlockTime);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    const deleteFlowOperation = token1.deleteFlow({
+      sender: wallet.address,
+      receiver: pair.address
+    });
+    const txnResponse2 = await deleteFlowOperation.exec(wallet);
+    await txnResponse2.wait();
+    expect(BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken0Balance.add(expectedAmountsOut.balance0));
+
+    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
+    expect(newExpectedAmountsOut.balance0).to.be.equal(BigNumber.from(0));
   });
 
   it("twap:both_tokens", async () => {

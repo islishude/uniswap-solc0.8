@@ -130,9 +130,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         time = block.timestamp;
     }
 
-    function _getUserBalancesAtTime(address user, uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint balance0, uint balance1) {
+    function _getUserBalancesAtTime(address user, uint32 time, uint112 _reserve0, uint112 _reserve1, uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) public view returns (uint balance0, uint balance1) {
         uint32 timeElapsed = time - blockTimestampLast;
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
         uint _twap0CumulativeLast = twap0CumulativeLast;
         uint _twap1CumulativeLast = twap1CumulativeLast;
         if (totalFlow1 > 0) {
@@ -142,17 +141,21 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             _twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
         }
 
-        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
-        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
-
         balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (_twap0CumulativeLast - userStartingCumulatives0[user])); // flow in is always positive
         balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]));
     }
 
-    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
+    function getUserBalancesAtTime(address user, uint32 time) public view returns (uint balance0, uint balance1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
-        (balance0, balance1) = _getUserBalancesAtTime(user, uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        (balance0, balance1) = _getUserBalancesAtTime(user, time, _reserve0, _reserve1, totalFlow0, totalFlow1, flow0, flow1);
+    }
+
+    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
+        (balance0, balance1) = getUserBalancesAtTime(user, uint32(block.timestamp % 2**32));
         time = block.timestamp;
     }
 
@@ -425,41 +428,44 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         );
 
         // decode previous net flowrestes
-        (uint112 totalFlow0, uint112 totalFlow1) = abi.decode(_cbdata, (uint112, uint112));
+        (uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) = abi.decode(_cbdata, (uint112, uint112, int96, int96));
 
         // get time
         uint32 time = uint32(block.timestamp % 2 ** 32);
-        uint32 timeElapsed = time - blockTimestampLast;
 
         // get realtime reserves based on old flowrates
         (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
 
-        // update cumulatives
-        if (totalFlow1 > 0) {
-            twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
-        }
-        if (totalFlow0 > 0) {
-            twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
-        }
+        {
+            uint32 timeElapsed = time - blockTimestampLast;
 
-        // set user starting cumulative
-        (address user, ) = abi.decode(_agreementData, (address, address));
-        if (_superToken == token0) {
-            
-            // TODO: transfer swapped/locked funds to user before resetting their position
-
-            userStartingCumulatives1[user] = twap1CumulativeLast;
-        }
-        if (_superToken == token1) {
-
-            // TODO: transfer swapped/locked funds to user before resetting their position
-
-            userStartingCumulatives0[user] = twap0CumulativeLast;
+            // update cumulatives
+            if (totalFlow1 > 0) {
+                twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
+            }
+            if (totalFlow0 > 0) {
+                twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
+            }
         }
 
         // settle reserves
         reserve0 = _reserve0;
         reserve1 = _reserve1;
+
+        // set user starting cumulative
+        (address user, ) = abi.decode(_agreementData, (address, address));
+        address _token0 = address(token0);
+        address _token1 = address(token1);
+        if (address(_superToken) == _token0) {
+            uint256 balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (twap1CumulativeLast - userStartingCumulatives1[user]));
+            if (balance1 > 0) _safeTransfer(_token1, user, balance1);
+            userStartingCumulatives1[user] = twap1CumulativeLast;
+        }
+        if (address(_superToken) == _token1) {
+            uint256 balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (twap0CumulativeLast - userStartingCumulatives0[user]));
+            if (balance0 > 0) _safeTransfer(_token0, user, balance0);
+            userStartingCumulatives0[user] = twap0CumulativeLast;
+        }
 
         // update blockTimestampLast
         blockTimestampLast = time;
@@ -469,13 +475,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         ISuperToken, // _superToken,
         address, // agreementClass
         bytes32, // agreementId
-        bytes calldata, // agreementData
+        bytes calldata agreementData,
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (address user, ) = abi.decode(agreementData, (address, address));
+        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
 
-        return abi.encode(totalFlow0, totalFlow1);
+        return abi.encode(totalFlow0, totalFlow1, flow0, flow1);
     }
 
     function afterAgreementCreated(
@@ -494,13 +503,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         ISuperToken, // _superToken,
         address, // agreementClass
         bytes32, // agreementId
-        bytes calldata, // agreementData
+        bytes calldata agreementData,
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (address user, ) = abi.decode(agreementData, (address, address));
+        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
 
-        return abi.encode(totalFlow0, totalFlow1);
+        return abi.encode(totalFlow0, totalFlow1, flow0, flow1);
     }
 
     function afterAgreementUpdated(
@@ -519,13 +531,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         ISuperToken, //_superToken,
         address, // agreementClass
         bytes32, // agreementId
-        bytes calldata, // agreementData
+        bytes calldata agreementData,
         bytes calldata // _ctx
     ) external view virtual override returns (bytes memory) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
+        (address user, ) = abi.decode(agreementData, (address, address));
+        (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
+        (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
 
-        return abi.encode(totalFlow0, totalFlow1);
+        return abi.encode(totalFlow0, totalFlow1, flow0, flow1);
     }
 
     function afterAgreementTerminated(
