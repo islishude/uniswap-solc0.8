@@ -880,7 +880,7 @@ describe("UniswapV2Pair", () => {
       // perfect case:          (reserve + all user balances) = poolBalance
       // never allowed:         (reserve + all user balances) > poolBalance
       // dust amounts allowed:  (reserve + all user balances) < poolBalance
-      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
+      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100); // within 0-100 wei
       expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
     }
 
@@ -916,5 +916,10 @@ describe("UniswapV2Pair", () => {
     expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
+
+    // should adequately check that the _update() function properly set reserves and accumulators 
+    await checkBalances();
+    await delay(60);
+    await checkBalances();
   });
 });

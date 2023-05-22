@@ -222,6 +222,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             balance0 <= type(uint112).max && balance1 <= type(uint112).max,
             "UniswapV2: OVERFLOW"
         );
+        // TODO: optimize for gas (timeElapsed already calculated in swap() )
+        // TODO: are these cumulatives necessary? could you calculate TWAP with the twap cumulatives?
         uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
         unchecked {
             uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
@@ -235,6 +237,20 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     timeElapsed;
             }
         }
+
+        // TODO: optimize
+        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
+        uint32 timeElapsed = time - blockTimestampLast;
+
+        // update cumulatives
+        // assuming _reserve{0,1} are real time
+        if (totalFlow1 > 0) {
+            twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
+        }
+        if (totalFlow0 > 0) {
+            twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
+        }
+
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
         blockTimestampLast = blockTimestamp;
@@ -437,7 +453,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             "RedirectAll: token not in pool"
         );
 
-        // decode previous net flowrestes
+        // decode previous net flowrates
         (uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) = abi.decode(_cbdata, (uint112, uint112, int96, int96));
 
         // get time
@@ -470,11 +486,13 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             uint256 balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (twap1CumulativeLast - userStartingCumulatives1[user]));
             if (balance1 > 0) _safeTransfer(_token1, user, balance1);
             userStartingCumulatives1[user] = twap1CumulativeLast;
+            totalSwappedFunds1 -= uint112(balance1); // TODO: check downcast
         }
         if (address(_superToken) == _token1) {
             uint256 balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (twap0CumulativeLast - userStartingCumulatives0[user]));
             if (balance0 > 0) _safeTransfer(_token0, user, balance0);
             userStartingCumulatives0[user] = twap0CumulativeLast;
+            totalSwappedFunds0 -= uint112(balance0);
         }
 
         // update blockTimestampLast
