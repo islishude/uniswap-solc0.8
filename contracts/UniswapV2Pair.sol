@@ -337,47 +337,56 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             "UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT"
         );
         
-        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
-
-        uint256 balance0;
-        uint256 balance1;
+        uint256 amount0In;
+        uint256 amount1In;
         {
-            // scope for _token{0,1}, avoids stack too deep errors
-            address _token0 = address(token0);
-            address _token1 = address(token1);
-            require(to != _token0 && to != _token1, "UniswapV2: INVALID_TO");
-            if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
-            if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
-            if (data.length > 0)
-                IUniswapV2Callee(to).uniswapV2Call(
-                    msg.sender,
-                    amount0Out,
-                    amount1Out,
-                    data
-                );
-            (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(time, totalFlow0, totalFlow1);
-            balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0; // subtract locked funds that are not part of the reserves
-            balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
-        }
+            uint256 balance0;
+            uint256 balance1;
+            uint112 _reserve0;
+            uint112 _reserve1;
+            {
+                // scope for _token{0,1}, avoids stack too deep errors
+                address _token0 = address(token0);
+                address _token1 = address(token1);
+                require(to != _token0 && to != _token1, "UniswapV2: INVALID_TO");
+                if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
+                if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
+                if (data.length > 0)
+                    IUniswapV2Callee(to).uniswapV2Call(
+                        msg.sender,
+                        amount0Out,
+                        amount1Out,
+                        data
+                    );
 
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
-        require(
-            amount0Out < _reserve0 && amount1Out < _reserve1,
-            "UniswapV2: INSUFFICIENT_LIQUIDITY"
-        );
+                // group real-time read operations for gas savings
+                (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
+                (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+                (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(time, totalFlow0, totalFlow1);
 
-        uint256 amount0In = balance0 > _reserve0 - amount0Out
-            ? balance0 - (_reserve0 - amount0Out)
-            : 0;
-        uint256 amount1In = balance1 > _reserve1 - amount1Out
-            ? balance1 - (_reserve1 - amount1Out)
-            : 0;
-        require(
-            amount0In > 0 || amount1In > 0,
-            "UniswapV2: INSUFFICIENT_INPUT_AMOUNT"
-        ); 
-        {
-            // scope for reserve{0,1}Adjusted, avoids stack too deep errors
+                // calculate balances without locked swaps
+                balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0; // subtract locked funds that are not part of the reserves
+                balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
+            }
+
+            require(
+                amount0Out < _reserve0 && amount1Out < _reserve1,
+                "UniswapV2: INSUFFICIENT_LIQUIDITY"
+            );
+
+            // calculate input amounts (input agnostic)
+            amount0In = balance0 > _reserve0 - amount0Out
+                ? balance0 - (_reserve0 - amount0Out)
+                : 0;
+            amount1In = balance1 > _reserve1 - amount1Out
+                ? balance1 - (_reserve1 - amount1Out)
+                : 0;
+            require(
+                amount0In > 0 || amount1In > 0,
+                "UniswapV2: INSUFFICIENT_INPUT_AMOUNT"
+            ); 
+
+            // check K
             uint256 balance0Adjusted = balance0 * 1000 - amount0In * 3;
             uint256 balance1Adjusted = balance1 * 1000 - amount1In * 3;
             require(
@@ -385,10 +394,11 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     uint256(_reserve0) * _reserve1 * 1e6,
                 "UniswapV2: K"
             );
+
+            _update(balance0, balance1, _reserve0, _reserve1);
         }
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        //emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+        emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
     // force balances to match reserves
