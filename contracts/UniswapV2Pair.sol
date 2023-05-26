@@ -254,6 +254,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
         blockTimestampLast = blockTimestamp;
+
+        // TODO: totalSwappedFunds{0,1} need to be settled here because reserves are also settled here
+
         emit Sync(reserve0, reserve1);
     }
 
@@ -456,14 +459,20 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // decode previous net flowrates
         (uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) = abi.decode(_cbdata, (uint112, uint112, int96, int96));
 
-        // get time
-        uint32 time = uint32(block.timestamp % 2 ** 32);
-
-        // get realtime reserves based on old flowrates
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
-
+        uint112 _reserve0;
+        uint112 _reserve1;
+        uint32 timeElapsed;
         {
-            uint32 timeElapsed = time - blockTimestampLast;
+            // get time
+            uint32 time = uint32(block.timestamp % 2 ** 32);
+
+            // get realtime reserves based on old flowrates
+            (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+
+            timeElapsed = time - blockTimestampLast;
+
+            // update blockTimestampLast
+            blockTimestampLast = time;
 
             // update cumulatives
             if (totalFlow1 > 0) {
@@ -474,10 +483,6 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             }
         }
 
-        // settle reserves
-        reserve0 = _reserve0;
-        reserve1 = _reserve1;
-
         // set user starting cumulative
         (address user, ) = abi.decode(_agreementData, (address, address));
         address _token0 = address(token0);
@@ -486,17 +491,19 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             uint256 balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (twap1CumulativeLast - userStartingCumulatives1[user]));
             if (balance1 > 0) _safeTransfer(_token1, user, balance1);
             userStartingCumulatives1[user] = twap1CumulativeLast;
-            totalSwappedFunds1 -= uint112(balance1); // TODO: check downcast
+            // NOTICE: mismatched precision between balance calculation and totalSwappedFunds{0,1} (dust amounts)
+            totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1 - uint112(balance1); // TODO: check downcast
         }
         if (address(_superToken) == _token1) {
             uint256 balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (twap0CumulativeLast - userStartingCumulatives0[user]));
             if (balance0 > 0) _safeTransfer(_token0, user, balance0);
             userStartingCumulatives0[user] = twap0CumulativeLast;
-            totalSwappedFunds0 -= uint112(balance0);
+            totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0 - uint112(balance0);
         }
 
-        // update blockTimestampLast
-        blockTimestampLast = time;
+        // settle reserves
+        reserve0 = _reserve0;
+        reserve1 = _reserve1;
     }
 
     function beforeAgreementCreated(

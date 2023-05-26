@@ -653,6 +653,11 @@ describe("UniswapV2Pair", () => {
 
     const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
     expect(newExpectedAmountsOut.balance1).to.be.equal(BigNumber.from(0));
+
+    // check that total locked swapped amount is 0 (or dust amount? TODO: is dust amount okay?)
+    const totalSwappedFunds = await pair.getRealTimeTotalSwappedFunds();
+    expect(totalSwappedFunds._totalSwappedFunds0).to.be.within(0, 100);
+    expect(totalSwappedFunds._totalSwappedFunds1).to.be.within(0, 100);
   });
 
   it("twap:token1", async () => {
