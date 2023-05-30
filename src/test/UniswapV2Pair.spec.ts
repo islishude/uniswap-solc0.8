@@ -926,5 +926,14 @@ describe("UniswapV2Pair", () => {
     await checkBalances();
     await delay(60);
     await checkBalances();
+
+    // make another discrete swap (checks totalSwappedFunds{0,1} are updated correctly (in _update() function))
+    latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    nextBlockTime = latestTime + 10;
+    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+    expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
   });
 });

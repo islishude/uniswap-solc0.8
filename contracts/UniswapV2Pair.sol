@@ -251,11 +251,13 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
         }
 
+        // totalSwappedFunds{0,1} need to be settled because reserves are also settled
+        totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0;
+        totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1;
+
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
         blockTimestampLast = blockTimestamp;
-
-        // TODO: totalSwappedFunds{0,1} need to be settled here because reserves are also settled here
 
         emit Sync(reserve0, reserve1);
     }
