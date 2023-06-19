@@ -24,6 +24,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     using UQ112x112 for uint224;
 
     uint256 public constant override MINIMUM_LIQUIDITY = 10 ** 3;
+    uint112 public constant UPPER_BOUND_FEE = 30; // basis points
+    uint112 public constant LOWER_BOUND_FEE = 1;
 
     address public override factory;
     ISuperToken public override token0;
@@ -82,14 +84,15 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         _blockTimestampLast = blockTimestampLast;
     }
 
-    function _getReservesAtTime(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _reserve0, uint112 _reserve1) {
+    // internal helper, get reserves without added fees
+    function _getReservesAtTimeNoFees(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint32 timeElapsed = time - blockTimestampLast;
         uint _kLast = kLast;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
             // use approximation:
-            uint112 totalAmount0 = totalFlow0 * timeElapsed;
-            uint112 totalAmount1 = totalFlow1 * timeElapsed;
+            uint112 totalAmount0 = totalFlow0 * timeElapsed * (10000 - UPPER_BOUND_FEE) / 10000; // apply upper bound fee to input amounts
+            uint112 totalAmount1 = totalFlow1 * timeElapsed * (10000 - UPPER_BOUND_FEE) / 10000;
             // not sure if these uint256->uint112 downcasts are safe:
             _reserve0 = uint112(Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1)));
             _reserve1 = uint112(_kLast / _reserve0);
@@ -103,12 +106,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             _reserve1 = _kLast / _reserve0;*/
         } else if (totalFlow0 > 0 && timeElapsed > 0) {
             // use x * y = k
-            uint112 totalAmount0 = totalFlow0 * timeElapsed;
+            uint112 totalAmount0 = totalFlow0 * timeElapsed * (10000 - UPPER_BOUND_FEE) / 10000;
             _reserve0 = reserve0 + totalAmount0;
             _reserve1 = uint112(_kLast / _reserve0); // should be a safe downcast
         } else if (totalFlow1 > 0 && timeElapsed > 0) {
             // use x * y = k
-            uint112 totalAmount1 = totalFlow1 * timeElapsed;
+            uint112 totalAmount1 = totalFlow1 * timeElapsed * (10000 - UPPER_BOUND_FEE) / 10000;
             _reserve1 = reserve1 + totalAmount1;
             _reserve0 = uint112(_kLast / _reserve1); // should be a safe downcast
         } else {
@@ -117,6 +120,33 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         }
     }
 
+    function _getReservesAtTime(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _reserve0, uint112 _reserve1) {
+        uint32 timeElapsed = time - blockTimestampLast;
+        (_reserve0, _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
+
+        // add fees accumulated since last reserve update
+        if (totalFlow0 > 0 && totalFlow1 > 0) {
+            uint256 flowDirection = totalFlow0 * reserve1 / reserve0;
+            if (flowDirection > totalFlow1) {
+                int reserve0Diff = (int(uint(reserve0)) - int(uint(_reserve0)));
+                _reserve0 += uint112(uint(int(uint(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) + (reserve0Diff - (reserve0Diff * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE)))));
+                _reserve1 += (totalFlow1 * timeElapsed * LOWER_BOUND_FEE / 10000);
+            } else if (flowDirection < totalFlow1) {
+                int reserve1Diff = (int(uint(reserve1)) - int(uint(_reserve1)));
+                _reserve0 += (totalFlow0 * timeElapsed * LOWER_BOUND_FEE / 10000) + reserve0 - _reserve0;
+                _reserve1 += uint112(uint(int(uint(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) + (reserve1Diff - (reserve1Diff * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE)))));
+            } else {
+                _reserve0 += totalFlow0 * timeElapsed * LOWER_BOUND_FEE / 10000;
+                _reserve1 += totalFlow1 * timeElapsed * LOWER_BOUND_FEE / 10000;
+            }
+        } else if (totalFlow0 > 0) {
+            _reserve0 += totalFlow0 * timeElapsed * UPPER_BOUND_FEE / 10000;
+        } else if (totalFlow1 > 0) {
+            _reserve1 += totalFlow1 * timeElapsed * UPPER_BOUND_FEE / 10000;
+        }
+    }
+
+    // intended to be used externally
     function getReservesAtTime(uint32 time) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
@@ -124,22 +154,38 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     }
 
     function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint time) {
-        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
-        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
-        (_reserve0, _reserve1) = _getReservesAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
+        (_reserve0, _reserve1) = getReservesAtTime(uint32(block.timestamp % 2**32));
         time = block.timestamp;
     }
 
-    function _getUserBalancesAtTime(address user, uint32 time, uint112 _reserve0, uint112 _reserve1, uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) public view returns (uint balance0, uint balance1) {
+    function _getUpdatedCumulatives(uint32 time, uint112 _reserve0, uint112 _reserve1, uint112 totalFlow0, uint112 totalFlow1) internal view returns (uint _twap0CumulativeLast, uint _twap1CumulativeLast) {
         uint32 timeElapsed = time - blockTimestampLast;
-        uint _twap0CumulativeLast = twap0CumulativeLast;
-        uint _twap1CumulativeLast = twap1CumulativeLast;
-        if (totalFlow1 > 0) {
-            _twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
+        _twap0CumulativeLast = twap0CumulativeLast;
+        _twap1CumulativeLast = twap1CumulativeLast;
+
+        if (totalFlow0 > 0 && totalFlow1 > 0) {
+            uint256 flowDirection = totalFlow0 * reserve1 / reserve0;
+            if (flowDirection > totalFlow1) {
+                // reserve0 - _reserve0 can be negative, hence the messy casts
+                _twap0CumulativeLast += uint256(UQ112x112.encode(uint112(uint(int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + ((int(uint(reserve0)) - int(uint(_reserve0))) * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE))))).uqdiv(totalFlow1));
+                _twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000) + reserve1 - _reserve1).uqdiv(totalFlow0));
+            } else if (flowDirection < totalFlow1) {
+                _twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000) + reserve0 - _reserve0).uqdiv(totalFlow1));
+                _twap1CumulativeLast += uint256(UQ112x112.encode(uint112(uint(int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + ((int(uint(reserve1)) - int(uint(_reserve1))) * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE))))).uqdiv(totalFlow0));
+            } else {
+                _twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000)).uqdiv(totalFlow1));
+                _twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000)).uqdiv(totalFlow0));
+            }
+        } else if (totalFlow0 > 0) {
+            // change in reserves always positive here
+            _twap1CumulativeLast += uint256(UQ112x112.encode(reserve1 - _reserve1).uqdiv(totalFlow0));
+        } else if (totalFlow1 > 0) {
+            _twap0CumulativeLast += uint256(UQ112x112.encode(reserve0 - _reserve0).uqdiv(totalFlow1));
         }
-        if (totalFlow0 > 0) {
-            _twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
-        }
+    }
+
+    function _getUserBalancesAtTime(address user, uint32 time, uint112 _reserve0, uint112 _reserve1, uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) public view returns (uint balance0, uint balance1) {
+        (uint _twap0CumulativeLast, uint _twap1CumulativeLast) = _getUpdatedCumulatives(time, _reserve0, _reserve1, totalFlow0, totalFlow1);
 
         balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (_twap0CumulativeLast - userStartingCumulatives0[user])); // flow in is always positive
         balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]));
@@ -150,34 +196,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
         (, int96 flow1, , ) = cfa.getFlow(token1, user, address(this));
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
         (balance0, balance1) = _getUserBalancesAtTime(user, time, _reserve0, _reserve1, totalFlow0, totalFlow1, flow0, flow1);
     }
 
     function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
         (balance0, balance1) = getUserBalancesAtTime(user, uint32(block.timestamp % 2**32));
-        time = block.timestamp;
-    }
-
-    /*
-        Need way to get total amount of locked funds that aren't part of the reserves
-        - primarily used in the swap function, but also a good method to have for measuring accurate TVL
-        - couldn't find a good way to use the twap cumulatives for this
-    */
-    function _getTotalSwappedFundsAtTime(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) {
-        uint32 timeElapsed = time - blockTimestampLast;
-        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
-        _totalSwappedFunds0 = totalSwappedFunds0;
-        _totalSwappedFunds1 = totalSwappedFunds1;
-
-        _totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0;
-        _totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1;
-    }
-
-    function getRealTimeTotalSwappedFunds() public view returns (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1, uint time) {
-        uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
-        uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
-        (_totalSwappedFunds0, _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(uint32(block.timestamp % 2**32), totalFlow0, totalFlow1);
         time = block.timestamp;
     }
 
@@ -212,16 +236,13 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     }
 
     // update reserves and, on the first call per block, price accumulators
-    function _update(
-        uint256 balance0,
-        uint256 balance1,
+    function _updateAccumulators(
         uint112 _reserve0,
-        uint112 _reserve1
+        uint112 _reserve1,
+        uint112 totalFlow0,
+        uint112 totalFlow1,
+        uint32 time
     ) private {
-        require(
-            balance0 <= type(uint112).max && balance1 <= type(uint112).max,
-            "UniswapV2: OVERFLOW"
-        );
         // TODO: optimize for gas (timeElapsed already calculated in swap() )
         // TODO: are these cumulatives necessary? could you calculate TWAP with the twap cumulatives?
         uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
@@ -239,25 +260,62 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         }
 
         // TODO: optimize
-        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
         uint32 timeElapsed = time - blockTimestampLast;
 
         // update cumulatives
         // assuming _reserve{0,1} are real time
-        if (totalFlow1 > 0) {
-            twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
-        }
-        if (totalFlow0 > 0) {
-            twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
-        }
+        if (totalFlow0 > 0 && totalFlow1 > 0) {
+            uint256 flowDirection = totalFlow0 * reserve1 / reserve0;
+            if (flowDirection > totalFlow1) {
+                uint112 swappedAmount0 = uint112(uint(int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + ((int(uint(reserve0)) - int(uint(_reserve0))) * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE))));
+                uint112 swappedAmount1 = (totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000) + reserve1 - _reserve1;
+                twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
+                twap1CumulativeLast += uint256(UQ112x112.encode(swappedAmount1).uqdiv(totalFlow0));
 
-        // totalSwappedFunds{0,1} need to be settled because reserves are also settled
-        totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0;
-        totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1;
+                // totalSwappedFunds{0,1} need to be settled because reserves are also settled
+                totalSwappedFunds0 += swappedAmount0;
+                totalSwappedFunds1 += swappedAmount1;
+            } else if (flowDirection < totalFlow1) {
+                uint112 swappedAmount0 = (totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000) + reserve0 - _reserve0;
+                uint112 swappedAmount1 = uint112(uint(int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + ((int(uint(reserve1)) - int(uint(_reserve1))) * int112(10000 - LOWER_BOUND_FEE) / int112(10000 - UPPER_BOUND_FEE))));
+                twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
+                twap1CumulativeLast += uint256(UQ112x112.encode(swappedAmount1).uqdiv(totalFlow0));
+
+                totalSwappedFunds0 += swappedAmount0;
+                totalSwappedFunds1 += swappedAmount1;
+            } else {
+                uint112 swappedAmount0 = (totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000);
+                uint112 swappedAmount1 = (totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE) / 10000);
+                twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
+                twap1CumulativeLast += uint256(UQ112x112.encode(swappedAmount1).uqdiv(totalFlow0));
+
+                totalSwappedFunds0 += swappedAmount0;
+                totalSwappedFunds1 += swappedAmount1;
+            }
+        } else if (totalFlow0 > 0) {
+            uint112 swappedAmount1 = reserve1 - _reserve1;
+            twap1CumulativeLast += uint256(UQ112x112.encode(swappedAmount1).uqdiv(totalFlow0));
+            totalSwappedFunds1 += swappedAmount1;
+        } else if (totalFlow1 > 0) {
+            uint112 swappedAmount0 = reserve0 - _reserve0;
+            twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
+            totalSwappedFunds0 += swappedAmount0;
+        }
+    }
+
+    function _updateReserves(
+        uint256 balance0,
+        uint256 balance1,
+        uint32 time
+    ) private {
+        require(
+            balance0 <= type(uint112).max && balance1 <= type(uint112).max,
+            "UniswapV2: OVERFLOW"
+        );
 
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
-        blockTimestampLast = blockTimestamp;
+        blockTimestampLast = time;
 
         emit Sync(reserve0, reserve1);
     }
@@ -310,7 +368,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         require(liquidity > 0, "UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED");
         _mint(to, liquidity);
 
-        _update(balance0, balance1, _reserve0, _reserve1);
+        (uint112 _totalFlow0, uint112 _totalFlow1, uint32 _time) = getRealTimeIncomingFlowRates();
+        _updateAccumulators(_reserve0, _reserve1, _totalFlow0, _totalFlow1, _time);
+        _updateReserves(balance0, balance1, _time);
         //if (feeOn)
         kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
@@ -341,7 +401,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         balance0 = IERC20(_token0).balanceOf(address(this));
         balance1 = IERC20(_token1).balanceOf(address(this));
 
-        _update(balance0, balance1, _reserve0, _reserve1);
+        //_update(balance0, balance1, _reserve0, _reserve1);
         if (feeOn) kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
         emit Burn(msg.sender, amount0, amount1, to);
     }
@@ -357,7 +417,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             amount0Out > 0 || amount1Out > 0,
             "UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT"
         );
-        
+
         uint256 amount0In;
         uint256 amount1In;
         {
@@ -381,13 +441,18 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     );
 
                 // group real-time read operations for gas savings
-                (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
+                uint112 totalFlow0;
+                uint112 totalFlow1;
+                uint32 time;
+                (totalFlow0, totalFlow1, time) = getRealTimeIncomingFlowRates();
+                (_reserve0, _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
+                _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);
+
                 (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
-                (uint112 _totalSwappedFunds0, uint112 _totalSwappedFunds1) = _getTotalSwappedFundsAtTime(time, totalFlow0, totalFlow1);
 
                 // calculate balances without locked swaps
-                balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0; // subtract locked funds that are not part of the reserves
-                balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
+                balance0 = IERC20(_token0).balanceOf(address(this)) - totalSwappedFunds0; // subtract locked funds that are not part of the reserves
+                balance1 = IERC20(_token1).balanceOf(address(this)) - totalSwappedFunds1;
             }
 
             require(
@@ -416,7 +481,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                 "UniswapV2: K"
             );
 
-            _update(balance0, balance1, _reserve0, _reserve1);
+            uint32 time = uint32(block.timestamp % 2**32); // TODO: loaded twice, need to optimize
+            _updateReserves(balance0, balance1, time);
         }
 
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
@@ -440,12 +506,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
     // force reserves to match balances
     function sync() external override lock {
-        _update(
-            token0.balanceOf(address(this)),
-            token1.balanceOf(address(this)),
-            reserve0,
-            reserve1
-        );
+        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
+        _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);
+
+        // calculate balances without locked swaps
+        uint256 balance0 = token0.balanceOf(address(this)) - totalSwappedFunds0; // subtract locked funds that are not part of the reserves
+        uint256 balance1 = token1.balanceOf(address(this)) - totalSwappedFunds1;
+
+        // update reserves
+        _updateReserves(balance0, balance1, time);
     }
 
     function _handleCallback(
@@ -461,51 +531,38 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         // decode previous net flowrates
         (uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) = abi.decode(_cbdata, (uint112, uint112, int96, int96));
 
-        uint112 _reserve0;
-        uint112 _reserve1;
-        uint32 timeElapsed;
-        {
-            // get time
-            uint32 time = uint32(block.timestamp % 2 ** 32);
+        // get time
+        uint32 time = uint32(block.timestamp % 2 ** 32);
 
-            // get realtime reserves based on old flowrates
-            (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+        // get realtime reserves based on old flowrates
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
 
-            timeElapsed = time - blockTimestampLast;
+        address _token0 = address(token0);
+        address _token1 = address(token1);
 
-            // update blockTimestampLast
-            blockTimestampLast = time;
-
-            // update cumulatives
-            if (totalFlow1 > 0) {
-                twap0CumulativeLast += uint256(UQ112x112.encode((totalFlow0 * timeElapsed) + reserve0 - _reserve0).uqdiv(totalFlow1));
-            }
-            if (totalFlow0 > 0) {
-                twap1CumulativeLast += uint256(UQ112x112.encode((totalFlow1 * timeElapsed) + reserve1 - _reserve1).uqdiv(totalFlow0));
-            }
-        }
+        _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);
 
         // set user starting cumulative
         (address user, ) = abi.decode(_agreementData, (address, address));
-        address _token0 = address(token0);
-        address _token1 = address(token1);
         if (address(_superToken) == _token0) {
             uint256 balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (twap1CumulativeLast - userStartingCumulatives1[user]));
             if (balance1 > 0) _safeTransfer(_token1, user, balance1);
             userStartingCumulatives1[user] = twap1CumulativeLast;
             // NOTICE: mismatched precision between balance calculation and totalSwappedFunds{0,1} (dust amounts)
-            totalSwappedFunds1 += (totalFlow1 * timeElapsed) + reserve1 - _reserve1 - uint112(balance1); // TODO: check downcast
-        }
-        if (address(_superToken) == _token1) {
+            totalSwappedFunds1 -= uint112(balance1); // TODO: check downcast
+        } else if (address(_superToken) == _token1) {
             uint256 balance0 = UQ112x112.decode(uint256(uint96(flow1)) * (twap0CumulativeLast - userStartingCumulatives0[user]));
             if (balance0 > 0) _safeTransfer(_token0, user, balance0);
             userStartingCumulatives0[user] = twap0CumulativeLast;
-            totalSwappedFunds0 += (totalFlow0 * timeElapsed) + reserve0 - _reserve0 - uint112(balance0);
+            totalSwappedFunds0 -= uint112(balance0);
         }
 
-        // settle reserves
-        reserve0 = _reserve0;
-        reserve1 = _reserve1;
+        uint256 poolBalance0 = IERC20(_token0).balanceOf(address(this)) - totalSwappedFunds0; // subtract locked funds that are not part of the reserves
+        uint256 poolBalance1 = IERC20(_token1).balanceOf(address(this)) - totalSwappedFunds1;
+
+        // TODO: check K
+
+        _updateReserves(poolBalance0, poolBalance1, time);
     }
 
     function beforeAgreementCreated(

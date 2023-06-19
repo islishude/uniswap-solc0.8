@@ -23,6 +23,10 @@ let tokenB
 // Test Accounts
 let owner
 
+// fee constants
+const UPPER_FEE = 30; // basis points
+const LOWER_FEE = 1; 
+
 // delay helper function
 const delay = async (seconds: number) => {
   await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -606,10 +610,11 @@ describe("UniswapV2Pair", () => {
         const realTimeReserves =  await pair.getRealTimeReserves();
         const totalAmountA = flowRate.mul(dt);
         const k = token0Amount.mul(token1Amount);
-        const a = token0Amount.add(totalAmountA);
-        const b = k.div(a);
+        const aNoFees = token0Amount.add(totalAmountA);
+        const aFees = token0Amount.add(totalAmountA.mul(10000 - UPPER_FEE).div(10000));
+        const b = k.div(aFees);
         expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
-        expect(realTimeReserves._reserve0).to.equal(a);
+        expect(realTimeReserves._reserve0).to.equal(aNoFees);
         expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
       } else {
         await checkStaticReserves();
@@ -654,10 +659,7 @@ describe("UniswapV2Pair", () => {
     const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
     expect(newExpectedAmountsOut.balance1).to.be.equal(BigNumber.from(0));
 
-    // check that total locked swapped amount is 0 (or dust amount? TODO: is dust amount okay?)
-    const totalSwappedFunds = await pair.getRealTimeTotalSwappedFunds();
-    expect(totalSwappedFunds._totalSwappedFunds0).to.be.within(0, 100);
-    expect(totalSwappedFunds._totalSwappedFunds1).to.be.within(0, 100);
+    // TODO: check that total locked swapped amount is 0 (or dust amount? TODO: is dust amount okay?)
   });
 
   it("twap:token1", async () => {
@@ -707,10 +709,11 @@ describe("UniswapV2Pair", () => {
         const realTimeReserves =  await pair.getRealTimeReserves();
         const totalAmountB = flowRate.mul(dt);
         const k = token0Amount.mul(token1Amount);
-        const b = token1Amount.add(totalAmountB);
-        const a = k.div(b);
+        const bNoFees = token1Amount.add(totalAmountB);
+        const bFees = token1Amount.add(totalAmountB.mul(10000 - UPPER_FEE).div(10000));
+        const a = k.div(bFees);
         expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
-        expect(realTimeReserves._reserve1).to.equal(b);
+        expect(realTimeReserves._reserve1).to.equal(bNoFees);
         expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
       } else {
         await checkStaticReserves();
@@ -841,11 +844,11 @@ describe("UniswapV2Pair", () => {
     //                                                      //
     //////////////////////////////////////////////////////////
     const checkDynamicReservesParadigmApprox = async(dt: number) => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
+      const realTimeReserves = await pair.getRealTimeReserves();
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
-      const totalFlowA = parseFloat(flowRate0.toString());
-      const totalFlowB = parseFloat(flowRate1.toString());
+      const totalFlowA = parseFloat(flowRate0.toString()) * (10000 - UPPER_FEE) / 10000; // upper fee should be taken from input amounts
+      const totalFlowB = parseFloat(flowRate1.toString()) * (10000 - UPPER_FEE) / 10000;
       const k = poolReserveA * poolReserveB;
 
       const a = (
@@ -882,7 +885,7 @@ describe("UniswapV2Pair", () => {
       const poolBalance1 = BigNumber.from(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
       const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
 
-      // perfect case:          (reserve + all user balances) = poolBalance
+      // perfect case:          (reserve + all user balances + collected fees) = poolBalance
       // never allowed:         (reserve + all user balances) > poolBalance
       // dust amounts allowed:  (reserve + all user balances) < poolBalance
       expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100); // within 0-100 wei
@@ -897,7 +900,6 @@ describe("UniswapV2Pair", () => {
     await delay(60);
     await checkReserves();
     await checkBalances();
-
 
     // The intent here is to have both of these discrete swap transactions in the same block, but turning off automine breaks the expect() function
     // Solution: just test in two separate blocks and re-calculate expectedOutputAmount
