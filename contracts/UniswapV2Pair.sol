@@ -348,11 +348,6 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     function mint(
         address to
     ) external override lock returns (uint256 liquidity) {
-        /*(uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        uint256 balance0 = token0.balanceOf(address(this));
-        uint256 balance1 = token1.balanceOf(address(this));
-        uint256 amount0 = balance0 - totalSwappedFunds0;
-        uint256 amount1 = balance1 - totalSwappedFunds1;*/
         (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
         (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
         _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);

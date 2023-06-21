@@ -22,6 +22,7 @@ let tokenB
 
 // Test Accounts
 let owner
+let wallet2
 
 // fee constants
 const UPPER_FEE = 30; // basis points
@@ -51,7 +52,7 @@ function sqrtBN(value: BigNumber) {
 before(async function () {
     
     // get hardhat accounts
-    [owner] = await ethers.getSigners();
+    [owner, wallet2] = await ethers.getSigners();
     sfDeployer = await deployTestFramework();
 
     // GETTING SUPERFLUID FRAMEWORK SET UP
@@ -210,32 +211,28 @@ describe("UniswapV2Pair", () => {
     
     // test providing liquidity
     const latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    const nextBlockTime = latestTime + 10;
     
     const lpToken0Amount = expandTo18Decimals(1);
-    const lpToken1Amount = expandTo18Decimals(4);
+
+    const realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+    const lpToken1Amount = realTimeReserves2._reserve1.mul(lpToken0Amount).div(realTimeReserves2._reserve0); // calculate correct ratio based on reserves
+
     await token0.transfer({receiver: pair.address, amount: lpToken0Amount}).exec(wallet);
     await token1.transfer({receiver: pair.address, amount: lpToken1Amount}).exec(wallet);
 
-    // TODO: test for expected outputs
-    // TODO: requires that this new liquidity should be provided at the correct ratio of the dynamic reserves
-    const expectedTotalLiquidity = expandTo18Decimals(20);
-    await expect(pair.mint(wallet.address))
-      //.to.emit(pair, "Sync")
-      //.withArgs(lpToken0Amount, lpToken1Amount)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+
+    const expectedNewLiquidity = lpToken1Amount.mul(expectedInitialLiquidity).div(realTimeReserves2._reserve1);
+    const expectedTotalLiquidity = expectedInitialLiquidity.add(expectedNewLiquidity);
+    await expect(pair.mint(wallet2.address))
       .to.emit(pair, "Mint")
       .withArgs(wallet.address, lpToken0Amount, lpToken1Amount);
 
-    /*
     expect(await pair.totalSupply()).to.eq(expectedTotalLiquidity);
-    expect(await pair.balanceOf(wallet.address)).to.eq(
-      expectedLiquidity.sub(MINIMUM_LIQUIDITY)
+    expect(await pair.balanceOf(wallet2.address)).to.eq(
+      expectedNewLiquidity
     );
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token0Amount);
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token1Amount);
-    const reserves = await pair.getReserves();
-    expect(reserves[0]).to.eq(token0Amount);
-    expect(reserves[1]).to.eq(token1Amount);
-    */
   });
 
   async function addLiquidity(
