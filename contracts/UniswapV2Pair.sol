@@ -87,7 +87,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     // internal helper, get reserves without added fees
     function _getReservesAtTimeNoFees(uint32 time, uint112 totalFlow0, uint112 totalFlow1) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint32 timeElapsed = time - blockTimestampLast;
-        uint _kLast = kLast;
+        uint _kLast = uint256(reserve0) * reserve1;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
             // use approximation:
@@ -348,9 +348,20 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     function mint(
         address to
     ) external override lock returns (uint256 liquidity) {
-        (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+        /*(uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
         uint256 balance0 = token0.balanceOf(address(this));
         uint256 balance1 = token1.balanceOf(address(this));
+        uint256 amount0 = balance0 - totalSwappedFunds0;
+        uint256 amount1 = balance1 - totalSwappedFunds1;*/
+        (uint112 totalFlow0, uint112 totalFlow1, uint32 time) = getRealTimeIncomingFlowRates();
+        (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
+        _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);
+
+        uint256 balance0 = token0.balanceOf(address(this)) - totalSwappedFunds0;
+        uint256 balance1 = token1.balanceOf(address(this)) - totalSwappedFunds1;
+
+        (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
 
@@ -368,11 +379,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         require(liquidity > 0, "UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED");
         _mint(to, liquidity);
 
-        (uint112 _totalFlow0, uint112 _totalFlow1, uint32 _time) = getRealTimeIncomingFlowRates();
-        _updateAccumulators(_reserve0, _reserve1, _totalFlow0, _totalFlow1, _time);
-        _updateReserves(balance0, balance1, _time);
-        //if (feeOn)
-        kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
+        _updateReserves(balance0, balance1, time);
+        if (feeOn) kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
     }
 

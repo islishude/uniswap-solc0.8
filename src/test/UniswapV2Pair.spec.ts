@@ -172,6 +172,72 @@ describe("UniswapV2Pair", () => {
     expect(reserves[1]).to.eq(token1Amount);
   });
 
+  // tests that reserves are settled correctly by mint
+  it("mint:dynamic_reserves", async () => {
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
+
+    // provide initial liquidity
+    const token0Amount = expandTo18Decimals(10);
+    const token1Amount = expandTo18Decimals(10);
+    await addLiquidity(
+      token0,
+      token1,
+      pair,
+      wallet,
+      token0Amount,
+      token1Amount
+    );
+    const expectedInitialLiquidity = expandTo18Decimals(10);
+    expect(await pair.totalSupply()).to.eq(expectedInitialLiquidity);
+
+    // check initial reserves (shouldn't have changed)
+    let realTimeReserves =  await pair.getRealTimeReserves();
+    expect(realTimeReserves._reserve0).to.equal(token0Amount);
+    expect(realTimeReserves._reserve1).to.equal(token1Amount);
+
+    // create a stream
+    const flowRate = BigNumber.from("1000000000");
+    const createFlowOperation = token0.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate
+    });
+    const txnResponse = await createFlowOperation.exec(wallet);
+    await txnResponse.wait();
+
+    // skip some time to let the reserves change
+    await delay(60);
+    
+    // test providing liquidity
+    const latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    
+    const lpToken0Amount = expandTo18Decimals(1);
+    const lpToken1Amount = expandTo18Decimals(4);
+    await token0.transfer({receiver: pair.address, amount: lpToken0Amount}).exec(wallet);
+    await token1.transfer({receiver: pair.address, amount: lpToken1Amount}).exec(wallet);
+
+    // TODO: test for expected outputs
+    // TODO: requires that this new liquidity should be provided at the correct ratio of the dynamic reserves
+    const expectedTotalLiquidity = expandTo18Decimals(20);
+    await expect(pair.mint(wallet.address))
+      //.to.emit(pair, "Sync")
+      //.withArgs(lpToken0Amount, lpToken1Amount)
+      .to.emit(pair, "Mint")
+      .withArgs(wallet.address, lpToken0Amount, lpToken1Amount);
+
+    /*
+    expect(await pair.totalSupply()).to.eq(expectedTotalLiquidity);
+    expect(await pair.balanceOf(wallet.address)).to.eq(
+      expectedLiquidity.sub(MINIMUM_LIQUIDITY)
+    );
+    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token0Amount);
+    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token1Amount);
+    const reserves = await pair.getReserves();
+    expect(reserves[0]).to.eq(token0Amount);
+    expect(reserves[1]).to.eq(token1Amount);
+    */
+  });
+
   async function addLiquidity(
     token0,
     token1,
