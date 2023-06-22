@@ -383,14 +383,33 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     function burn(
         address to
     ) external override lock returns (uint256 amount0, uint256 amount1) {
-        (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+
         address _token0 = address(token0); // gas savings
         address _token1 = address(token1); // gas savings
-        uint256 balance0 = IERC20(_token0).balanceOf(address(this));
-        uint256 balance1 = IERC20(_token1).balanceOf(address(this));
         uint256 liquidity = balanceOf[address(this)];
+        uint32 time;
+        uint256 balance0;
+        uint256 balance1;
+        uint256 _totalSwappedFunds0;
+        uint256 _totalSwappedFunds1;
+        bool feeOn;
+        {
+            // scope for _reserve{0,1} and totalFlow{0,1}, avoids stack too deep errors
+            uint112 totalFlow0;
+            uint112 totalFlow1;
+            (totalFlow0, totalFlow1, time) = getRealTimeIncomingFlowRates();
+            (uint112 _reserve0, uint112 _reserve1) = _getReservesAtTimeNoFees(time, totalFlow0, totalFlow1);
+            _updateAccumulators(_reserve0, _reserve1, totalFlow0, totalFlow1, time);
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
+            _totalSwappedFunds0 = totalSwappedFunds0; // gas savings
+            _totalSwappedFunds1 = totalSwappedFunds1;
+            balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0;
+            balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
+
+            (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
+            feeOn = _mintFee(_reserve0, _reserve1);
+        }
+
         uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = (liquidity * balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = (liquidity * balance1) / _totalSupply; // using balances ensures pro-rata distribution
@@ -401,10 +420,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         _burn(address(this), liquidity);
         _safeTransfer(_token0, to, amount0);
         _safeTransfer(_token1, to, amount1);
-        balance0 = IERC20(_token0).balanceOf(address(this));
-        balance1 = IERC20(_token1).balanceOf(address(this));
+        balance0 = IERC20(_token0).balanceOf(address(this)) - _totalSwappedFunds0;
+        balance1 = IERC20(_token1).balanceOf(address(this)) - _totalSwappedFunds1;
 
-        //_update(balance0, balance1, _reserve0, _reserve1);
+        _updateReserves(balance0, balance1, time);
         if (feeOn) kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
         emit Burn(msg.sender, amount0, amount1, to);
     }

@@ -49,6 +49,11 @@ function sqrtBN(value: BigNumber) {
   return y;
 }
 
+// erc20 abi, used to correctly check for Transfer event
+const erc20Abi = [
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+];
+
 before(async function () {
     
     // get hardhat accounts
@@ -486,10 +491,10 @@ describe("UniswapV2Pair", () => {
         ethconst.AddressZero,
         expectedLiquidity.sub(MINIMUM_LIQUIDITY)
       )
-      //.to.emit(token0, "Transfer")
-      //.withArgs(pair.address, wallet.address, token0Amount.sub(1000))
-      //.to.emit(token1, "Transfer")
-      //.withArgs(pair.address, wallet.address, token1Amount.sub(1000))
+      .to.emit(new ethers.Contract(token0.address, erc20Abi, owner), "Transfer")
+      .withArgs(pair.address, wallet.address, token0Amount.sub(1000))
+      .to.emit(new ethers.Contract(token1.address, erc20Abi, owner), "Transfer")
+      .withArgs(pair.address, wallet.address, token1Amount.sub(1000))
       .to.emit(pair, "Sync")
       .withArgs(1000, 1000)
       .to.emit(pair, "Burn")
@@ -512,6 +517,80 @@ describe("UniswapV2Pair", () => {
     expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
       totalSupplyToken1.sub(1000).toString()
     );
+  });
+
+  // tests that reserves are settled correctly by burn
+  it("burn:dynamic_reserves", async () => {
+    const { pair, wallet, token0, token1 } = await loadFixture(fixture);
+
+    // provide initial liquidity
+    const token0Amount = expandTo18Decimals(10);
+    const token1Amount = expandTo18Decimals(10);
+    await addLiquidity(
+      token0,
+      token1,
+      pair,
+      wallet,
+      token0Amount,
+      token1Amount
+    );
+    const expectedLiquidity = expandTo18Decimals(10);
+    expect(await pair.totalSupply()).to.eq(expectedLiquidity);
+
+    // check initial reserves (shouldn't have changed)
+    let realTimeReserves =  await pair.getRealTimeReserves();
+    expect(realTimeReserves._reserve0).to.equal(token0Amount);
+    expect(realTimeReserves._reserve1).to.equal(token1Amount);
+
+    // create a stream
+    const flowRate = BigNumber.from("1000000000");
+    const createFlowOperation = token0.createFlow({
+      sender: wallet.address,
+      receiver: pair.address,
+      flowRate: flowRate
+    });
+    const txnResponse = await createFlowOperation.exec(wallet);
+    await txnResponse.wait();
+
+    // skip some time to let the reserves change
+    await delay(60);
+    
+    // test removing liquidity
+    const latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    const nextBlockTime = latestTime + 10;
+
+    const realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+
+    await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY));
+
+    const totalSupply = await pair.totalSupply();
+    const expectedToken0Amount = expectedLiquidity.mul(realTimeReserves2._reserve0).div(totalSupply);
+    const expectedToken1Amount = expectedLiquidity.mul(realTimeReserves2._reserve1).div(totalSupply);
+
+    await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
+    await expect(pair.burn(wallet.address))
+      .to.emit(pair, "Transfer")
+      .withArgs(
+        pair.address,
+        ethconst.AddressZero,
+        expectedLiquidity.sub(MINIMUM_LIQUIDITY)
+      )
+      .to.emit(new ethers.Contract(token0.address, erc20Abi, owner), "Transfer")
+      .withArgs(pair.address, wallet.address, expectedToken0Amount.sub(1001)) // TODO: assuming this is a rouding error (should be 1000), is this ok
+      .to.emit(new ethers.Contract(token1.address, erc20Abi, owner), "Transfer")
+      .withArgs(pair.address, wallet.address, expectedToken1Amount.sub(1000))
+      .to.emit(pair, "Sync")
+      .withArgs(1001, 1000)
+      .to.emit(pair, "Burn")
+      .withArgs(
+        wallet.address,
+        expectedToken0Amount.sub(1001),
+        expectedToken1Amount.sub(1000),
+        wallet.address
+      );
+
+    expect(await pair.balanceOf(wallet.address)).to.eq(0);
+    expect(await pair.totalSupply()).to.eq(MINIMUM_LIQUIDITY);
   });
 
   it("price{0,1}CumulativeLast", async () => {
