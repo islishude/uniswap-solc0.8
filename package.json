@@ -64,5 +64,8 @@
     "prepublishOnly": "yarn test"
   },
   "license": "GPL-3.0-or-later",
-  "packageManager": "yarn@3.2.4"
+  "packageManager": "yarn@3.2.4",
+  "dependencies": {
+    "graphql": "^16.7.1"
+  }
 }
