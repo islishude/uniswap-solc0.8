@@ -11,12 +11,7 @@ import "./IUniswapV2ERC20.sol";
 
 interface IUniswapV2Pair is IUniswapV2ERC20 {
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
-    event Burn(
-        address indexed sender,
-        uint256 amount0,
-        uint256 amount1,
-        address indexed to
-    );
+    event Burn(address indexed sender, uint256 amount0, uint256 amount1, address indexed to);
     event Swap(
         address indexed sender,
         uint256 amount0In,
@@ -35,10 +30,7 @@ interface IUniswapV2Pair is IUniswapV2ERC20 {
 
     function token1() external view returns (ISuperToken);
 
-    function getReserves()
-        external
-        view
-        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
 
     function price0CumulativeLast() external view returns (uint256);
 
@@ -48,16 +40,9 @@ interface IUniswapV2Pair is IUniswapV2ERC20 {
 
     function mint(address to) external returns (uint256 liquidity);
 
-    function burn(
-        address to
-    ) external returns (uint256 amount0, uint256 amount1);
+    function burn(address to) external returns (uint256 amount0, uint256 amount1);
 
-    function swap(
-        uint256 amount0Out,
-        uint256 amount1Out,
-        address to,
-        bytes calldata data
-    ) external;
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
 
     function skim(address to) external;
 

@@ -2,24 +2,38 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
 
 jobs:
-  test:
+  hardhat:
     strategy:
-      matrix:
-        node: ["16", "18"]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+      fail-fast: true
+
+    name: Hardhat project
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v3
         with:
-          node-version: ${{ matrix.node }}
+          submodules: recursive
+
+      - name: Setup Node 16
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16.x"
           cache: "yarn"
-      - run: yarn install --frozen-lockfile
-      - run: yarn lint
-      - run: yarn compile
-      - run: yarn test
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Compile
+        run: yarn compile
+
+      - name: Run Hardhat tests
+        run: |
+          yarn test
+        id: hardhat-test

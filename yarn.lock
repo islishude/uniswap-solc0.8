@@ -1853,6 +1853,7 @@ __metadata:
     dotenv: ^16.0.3
     eslint: ^8.27.0
     ethers: ^5.7.2
+    graphql: ^16.7.1
     hardhat: ^2.12.2
     hardhat-gas-reporter: ^1.0.9
     prettier: ^2.7.1
@@ -5961,6 +5962,13 @@ __metadata:
   peerDependencies:
     graphql: 14 - 16
   checksum: db3800cc4ee884cd1514d7d5eafafb9ed27694278fdddd7402345754a7d25e7d713246c72aa510b439b6df2633b74f2cf74fb36864a22a857d5fb2de1cf0b4d8
+  languageName: node
+  linkType: hard
+
+"graphql@npm:^16.7.1":
+  version: 16.7.1
+  resolution: "graphql@npm:16.7.1"
+  checksum: c924d8428daf0e96a5ea43e9bc3cd1b6802899907d284478ac8f705c8fd233a0a51eef915f7569fb5de8acb2e85b802ccc6c85c2b157ad805c1e9adba5a299bd
   languageName: node
   linkType: hard
 
