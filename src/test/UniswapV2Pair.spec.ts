@@ -1,10 +1,10 @@
 import { expect } from "chai";
-import { BigNumber, constants as ethconst } from "ethers";
+import { BigNumber, constants as ethconst, Contract } from "ethers";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
 import { expandTo18Decimals, encodePrice } from "./shared/utilities";
-import { UniswapV2Pair, ERC20 } from "../../typechain-types";
+import { UniswapV2Pair } from "../../typechain-types";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
@@ -12,21 +12,21 @@ import { Framework } from "@superfluid-finance/sdk-core";
 import { deployTestFramework } from "@superfluid-finance/ethereum-contracts/dev-scripts/deploy-test-framework";
 import TestToken from "@superfluid-finance/ethereum-contracts/build/contracts/TestToken.json";
 
-let sfDeployer
-let contractsFramework
-let sf
-let baseTokenA
-let baseTokenB
-let tokenA
-let tokenB
+let sfDeployer;
+let contractsFramework: any;
+let sf: Framework;
+let baseTokenA;
+let baseTokenB;
+let tokenA: any;
+let tokenB: any;
 
 // Test Accounts
-let owner
-let wallet2
+let owner: SignerWithAddress;
+let wallet2: SignerWithAddress;
 
 // fee constants
 const UPPER_FEE = 30; // basis points
-const LOWER_FEE = 1; 
+const LOWER_FEE = 1;
 
 // delay helper function
 const delay = async (seconds: number) => {
@@ -55,68 +55,75 @@ const erc20Abi = [
 ];
 
 before(async function () {
-    
-    // get hardhat accounts
-    [owner, wallet2] = await ethers.getSigners();
-    sfDeployer = await deployTestFramework();
+  // get hardhat accounts
+  [owner, wallet2] = await ethers.getSigners();
+  sfDeployer = await deployTestFramework();
 
-    // GETTING SUPERFLUID FRAMEWORK SET UP
+  // GETTING SUPERFLUID FRAMEWORK SET UP
 
-    // deploy the framework locally
-    contractsFramework = await sfDeployer.frameworkDeployer.getFramework()
+  // deploy the framework locally
+  contractsFramework = await sfDeployer.frameworkDeployer.getFramework();
 
-    // initialize framework
-    sf = await Framework.create({
-        chainId: 31337,
-        provider: ethers.provider,
-        resolverAddress: contractsFramework.resolver, // (empty)
-        protocolReleaseVersion: "test"
-    })
+  // initialize framework
+  sf = await Framework.create({
+    chainId: 31337,
+    provider: ethers.provider,
+    resolverAddress: contractsFramework.resolver, // (empty)
+    protocolReleaseVersion: "test",
+  });
 
-    // DEPLOYING DAI and DAI wrapper super token (which will be our `spreaderToken`)
-    await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
-        "Base Token A",
-        "baseTokenA",
-        18,
-        ethers.utils.parseEther("10000").toString()
-    )
-    await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
-      "Base Token B",
-      "baseTokenB",
-      18,
+  // DEPLOYING DAI and DAI wrapper super token (which will be our `spreaderToken`)
+  await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
+    "Base Token A",
+    "baseTokenA",
+    18,
+    ethers.utils.parseEther("10000").toString()
+  );
+  await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
+    "Base Token B",
+    "baseTokenB",
+    18,
+    ethers.utils.parseEther("10000").toString()
+  );
+
+  tokenA = await sf.loadSuperToken("baseTokenAx");
+  baseTokenA = new ethers.Contract(
+    tokenA.underlyingToken!.address,
+    TestToken.abi,
+    owner
+  );
+
+  tokenB = await sf.loadSuperToken("baseTokenBx");
+  baseTokenB = new ethers.Contract(
+    tokenB.underlyingToken!.address,
+    TestToken.abi,
+    owner
+  );
+
+  const setupToken = async (underlyingToken: Contract, superToken: any) => {
+    // minting test token
+    await underlyingToken.mint(
+      owner.address,
       ethers.utils.parseEther("10000").toString()
-    )
+    );
 
-    tokenA = await sf.loadSuperToken('baseTokenAx')
-    baseTokenA = new ethers.Contract(
-        tokenA.underlyingToken.address,
-        TestToken.abi,
-        owner
-    )
+    // approving DAIx to spend DAI (Super Token object is not an ethers contract object and has different operation syntax)
+    await underlyingToken.approve(
+      superToken.address,
+      ethers.constants.MaxInt256
+    );
+    await underlyingToken
+      .connect(owner)
+      .approve(superToken.address, ethers.constants.MaxInt256);
+    // Upgrading all DAI to DAIx
+    const ownerUpgrade = superToken.upgrade({
+      amount: ethers.utils.parseEther("10000").toString(),
+    });
+    await ownerUpgrade.exec(owner);
+  };
 
-    tokenB = await sf.loadSuperToken('baseTokenBx')
-    baseTokenB = new ethers.Contract(
-        tokenB.underlyingToken.address,
-        TestToken.abi,
-        owner
-    )
-
-    const setupToken = async (underlyingToken, superToken) => {
-      // minting test token
-      await underlyingToken.mint(owner.address, ethers.utils.parseEther("10000").toString())
-
-      // approving DAIx to spend DAI (Super Token object is not an ethers contract object and has different operation syntax)
-      await underlyingToken.approve(superToken.address, ethers.constants.MaxInt256)
-      await underlyingToken
-          .connect(owner)
-          .approve(superToken.address, ethers.constants.MaxInt256)
-      // Upgrading all DAI to DAIx
-      const ownerUpgrade = superToken.upgrade({amount: ethers.utils.parseEther("10000").toString()});
-      await ownerUpgrade.exec(owner)
-    }
-
-    await setupToken(baseTokenA, tokenA);
-    await setupToken(baseTokenB, tokenB);
+  await setupToken(baseTokenA, tokenA);
+  await setupToken(baseTokenB, tokenB);
 });
 
 const MINIMUM_LIQUIDITY = BigNumber.from(10).pow(3);
@@ -138,8 +145,18 @@ describe("UniswapV2Pair", () => {
     const token1 = tokenA.address === token0Address ? tokenB : tokenA;
 
     // approve max amount for every user
-    await token0.approve({receiver: pair.address, amount: ethers.constants.MaxInt256}).exec(wallet);
-    await token1.approve({receiver: pair.address, amount: ethers.constants.MaxInt256}).exec(wallet);
+    await token0
+      .approve({
+        receiver: pair.address,
+        amount: ethers.constants.MaxInt256,
+      })
+      .exec(wallet);
+    await token1
+      .approve({
+        receiver: pair.address,
+        amount: ethers.constants.MaxInt256,
+      })
+      .exec(wallet);
 
     return { pair, token0, token1, wallet, other, factory };
   }
@@ -148,9 +165,19 @@ describe("UniswapV2Pair", () => {
     const { pair, wallet, token0, token1 } = await loadFixture(fixture);
     const token0Amount = expandTo18Decimals(1);
     const token1Amount = expandTo18Decimals(4);
-    
-    await token0.transfer({receiver: pair.address, amount: token0Amount}).exec(wallet);
-    await token1.transfer({receiver: pair.address, amount: token1Amount}).exec(wallet);
+
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: token0Amount,
+      })
+      .exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: token1Amount,
+      })
+      .exec(wallet);
 
     const expectedLiquidity = expandTo18Decimals(2);
     await expect(pair.mint(wallet.address))
@@ -171,8 +198,18 @@ describe("UniswapV2Pair", () => {
     expect(await pair.balanceOf(wallet.address)).to.eq(
       expectedLiquidity.sub(MINIMUM_LIQUIDITY)
     );
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token0Amount);
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(token1Amount);
+    expect(
+      await token0.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token0Amount);
+    expect(
+      await token1.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token1Amount);
     const reserves = await pair.getReserves();
     expect(reserves[0]).to.eq(token0Amount);
     expect(reserves[1]).to.eq(token1Amount);
@@ -197,7 +234,7 @@ describe("UniswapV2Pair", () => {
     expect(await pair.totalSupply()).to.eq(expectedInitialLiquidity);
 
     // check initial reserves (shouldn't have changed)
-    let realTimeReserves =  await pair.getRealTimeReserves();
+    let realTimeReserves = await pair.getRealTimeReserves();
     expect(realTimeReserves._reserve0).to.equal(token0Amount);
     expect(realTimeReserves._reserve1).to.equal(token1Amount);
 
@@ -206,50 +243,73 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation = token0.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate
+      flowRate: flowRate,
     });
     const txnResponse = await createFlowOperation.exec(wallet);
     await txnResponse.wait();
 
     // skip some time to let the reserves change
     await delay(60);
-    
+
     // test providing liquidity
-    const latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    const latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     const nextBlockTime = latestTime + 10;
-    
+
     const lpToken0Amount = expandTo18Decimals(1);
 
-    const realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
-    const lpToken1Amount = realTimeReserves2._reserve1.mul(lpToken0Amount).div(realTimeReserves2._reserve0); // calculate correct ratio based on reserves
+    const realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
+    const lpToken1Amount = realTimeReserves2._reserve1
+      .mul(lpToken0Amount)
+      .div(realTimeReserves2._reserve0); // calculate correct ratio based on reserves
 
-    await token0.transfer({receiver: pair.address, amount: lpToken0Amount}).exec(wallet);
-    await token1.transfer({receiver: pair.address, amount: lpToken1Amount}).exec(wallet);
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: lpToken0Amount,
+      })
+      .exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: lpToken1Amount,
+      })
+      .exec(wallet);
 
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
 
-    const expectedNewLiquidity = lpToken1Amount.mul(expectedInitialLiquidity).div(realTimeReserves2._reserve1);
-    const expectedTotalLiquidity = expectedInitialLiquidity.add(expectedNewLiquidity);
+    const expectedNewLiquidity = lpToken1Amount
+      .mul(expectedInitialLiquidity)
+      .div(realTimeReserves2._reserve1);
+    const expectedTotalLiquidity =
+      expectedInitialLiquidity.add(expectedNewLiquidity);
     await expect(pair.mint(wallet2.address))
       .to.emit(pair, "Mint")
       .withArgs(wallet.address, lpToken0Amount, lpToken1Amount);
 
     expect(await pair.totalSupply()).to.eq(expectedTotalLiquidity);
-    expect(await pair.balanceOf(wallet2.address)).to.eq(
-      expectedNewLiquidity
-    );
+    expect(await pair.balanceOf(wallet2.address)).to.eq(expectedNewLiquidity);
   });
 
   async function addLiquidity(
-    token0,
-    token1,
+    token0: any,
+    token1: any,
     pair: UniswapV2Pair,
     wallet: SignerWithAddress,
     token0Amount: BigNumber,
     token1Amount: BigNumber
   ) {
-    await token0.transfer({receiver: pair.address, amount: token0Amount}).exec(wallet);
-    await token1.transfer({receiver: pair.address, amount: token1Amount}).exec(wallet);
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: token0Amount,
+      })
+      .exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: token1Amount,
+      })
+      .exec(wallet);
     await pair.mint(wallet.address);
   }
 
@@ -282,7 +342,12 @@ describe("UniswapV2Pair", () => {
         token0Amount,
         token1Amount
       );
-      await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+      await token0
+        .transfer({
+          receiver: pair.address,
+          amount: swapAmount,
+        })
+        .exec(wallet);
       await expect(
         pair.swap(0, expectedOutputAmount.add(1), wallet.address, "0x")
       ).to.be.revertedWith("UniswapV2: K");
@@ -314,7 +379,12 @@ describe("UniswapV2Pair", () => {
         token0Amount,
         token1Amount
       );
-      await token0.transfer({receiver: pair.address, amount: inputAmount}).exec(wallet);
+      await token0
+        .transfer({
+          receiver: pair.address,
+          amount: inputAmount,
+        })
+        .exec(wallet);
       await expect(
         pair.swap(outputAmount.add(1), 0, wallet.address, "0x")
       ).to.be.revertedWith("UniswapV2: K");
@@ -338,7 +408,12 @@ describe("UniswapV2Pair", () => {
 
     const swapAmount = expandTo18Decimals(1);
     const expectedOutputAmount = BigNumber.from("1662497915624478906");
-    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
     await expect(pair.swap(0, expectedOutputAmount, wallet.address, "0x"))
       //.to.emit(token1, "Transfer")
       //.withArgs(pair.address, wallet.address, expectedOutputAmount)
@@ -360,20 +435,36 @@ describe("UniswapV2Pair", () => {
     const reserves = await pair.getReserves();
     expect(reserves[0]).to.eq(token0Amount.add(swapAmount));
     expect(reserves[1]).to.eq(token1Amount.sub(expectedOutputAmount));
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      token0Amount.add(swapAmount)
+    expect(
+      await token0.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token0Amount.add(swapAmount));
+    expect(
+      await token1.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token1Amount.sub(expectedOutputAmount));
+    const totalSupplyToken0 = BigNumber.from(
+      await token0.totalSupply({ providerOrSigner: ethers.provider })
     );
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      token1Amount.sub(expectedOutputAmount)
+    const totalSupplyToken1 = BigNumber.from(
+      await token1.totalSupply({ providerOrSigner: ethers.provider })
     );
-    const totalSupplyToken0 = BigNumber.from(await token0.totalSupply({providerOrSigner: ethers.provider}));
-    const totalSupplyToken1 = BigNumber.from(await token1.totalSupply({providerOrSigner: ethers.provider}));
-    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken0.sub(token0Amount).sub(swapAmount).toString()
-    );
-    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken1.sub(token1Amount).add(expectedOutputAmount)
-    );
+    expect(
+      await token0.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken0.sub(token0Amount).sub(swapAmount).toString());
+    expect(
+      await token1.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken1.sub(token1Amount).add(expectedOutputAmount));
   });
 
   it("swap:token1", async () => {
@@ -392,7 +483,12 @@ describe("UniswapV2Pair", () => {
 
     const swapAmount = expandTo18Decimals(1);
     const expectedOutputAmount = BigNumber.from("453305446940074565");
-    await token1.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
     await expect(pair.swap(expectedOutputAmount, 0, wallet.address, "0x"))
       //.to.emit(token0, "Transfer")
       //.withArgs(pair.address, wallet.address, expectedOutputAmount)
@@ -414,23 +510,39 @@ describe("UniswapV2Pair", () => {
     const reserves = await pair.getReserves();
     expect(reserves[0]).to.eq(token0Amount.sub(expectedOutputAmount));
     expect(reserves[1]).to.eq(token1Amount.add(swapAmount));
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      token0Amount.sub(expectedOutputAmount)
+    expect(
+      await token0.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token0Amount.sub(expectedOutputAmount));
+    expect(
+      await token1.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(token1Amount.add(swapAmount));
+    const totalSupplyToken0 = BigNumber.from(
+      await token0.totalSupply({ providerOrSigner: ethers.provider })
     );
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      token1Amount.add(swapAmount)
+    const totalSupplyToken1 = BigNumber.from(
+      await token1.totalSupply({ providerOrSigner: ethers.provider })
     );
-    const totalSupplyToken0 = BigNumber.from(await token0.totalSupply({providerOrSigner: ethers.provider}));
-    const totalSupplyToken1 = BigNumber.from(await token1.totalSupply({providerOrSigner: ethers.provider}));
-    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken0.sub(token0Amount).add(expectedOutputAmount)
-    );
-    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken1.sub(token1Amount).sub(swapAmount)
-    );
+    expect(
+      await token0.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken0.sub(token0Amount).add(expectedOutputAmount));
+    expect(
+      await token1.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken1.sub(token1Amount).sub(swapAmount));
   });
 
-/*
+  /*
   NOTE: modifications to contract caused changes in gas cost, so temporarily removing this test
   it("swap:gas", async () => {
     const { pair, wallet, token0, token1 } = await loadFixture(fixture);
@@ -507,16 +619,36 @@ describe("UniswapV2Pair", () => {
 
     expect(await pair.balanceOf(wallet.address)).to.eq(0);
     expect(await pair.totalSupply()).to.eq(MINIMUM_LIQUIDITY);
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq('1000');
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq('1000');
-    const totalSupplyToken0 = BigNumber.from(await token0.totalSupply({providerOrSigner: ethers.provider}));
-    const totalSupplyToken1 = BigNumber.from(await token1.totalSupply({providerOrSigner: ethers.provider}));
-    expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken0.sub(1000).toString()
+    expect(
+      await token0.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq("1000");
+    expect(
+      await token1.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq("1000");
+    const totalSupplyToken0 = BigNumber.from(
+      await token0.totalSupply({ providerOrSigner: ethers.provider })
     );
-    expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.eq(
-      totalSupplyToken1.sub(1000).toString()
+    const totalSupplyToken1 = BigNumber.from(
+      await token1.totalSupply({ providerOrSigner: ethers.provider })
     );
+    expect(
+      await token0.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken0.sub(1000).toString());
+    expect(
+      await token1.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(totalSupplyToken1.sub(1000).toString());
   });
 
   // tests that reserves are settled correctly by burn
@@ -538,7 +670,7 @@ describe("UniswapV2Pair", () => {
     expect(await pair.totalSupply()).to.eq(expectedLiquidity);
 
     // check initial reserves (shouldn't have changed)
-    let realTimeReserves =  await pair.getRealTimeReserves();
+    let realTimeReserves = await pair.getRealTimeReserves();
     expect(realTimeReserves._reserve0).to.equal(token0Amount);
     expect(realTimeReserves._reserve1).to.equal(token1Amount);
 
@@ -547,25 +679,29 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation = token0.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate
+      flowRate: flowRate,
     });
     const txnResponse = await createFlowOperation.exec(wallet);
     await txnResponse.wait();
 
     // skip some time to let the reserves change
     await delay(60);
-    
+
     // test removing liquidity
-    const latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    const latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     const nextBlockTime = latestTime + 10;
 
-    const realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
+    const realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
 
     await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY));
 
     const totalSupply = await pair.totalSupply();
-    const expectedToken0Amount = expectedLiquidity.mul(realTimeReserves2._reserve0).div(totalSupply);
-    const expectedToken1Amount = expectedLiquidity.mul(realTimeReserves2._reserve1).div(totalSupply);
+    const expectedToken0Amount = expectedLiquidity
+      .mul(realTimeReserves2._reserve0)
+      .div(totalSupply);
+    const expectedToken1Amount = expectedLiquidity
+      .mul(realTimeReserves2._reserve1)
+      .div(totalSupply);
 
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     await expect(pair.burn(wallet.address))
@@ -617,7 +753,12 @@ describe("UniswapV2Pair", () => {
     // expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 1);
 
     const swapAmount = expandTo18Decimals(3);
-    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
     await time.setNextBlockTimestamp(blockTimestamp + 10);
     // swap to a new price eagerly instead of syncing
     await pair.swap(0, expandTo18Decimals(1), wallet.address, "0x"); // make the price nice
@@ -655,7 +796,12 @@ describe("UniswapV2Pair", () => {
 
     const swapAmount = expandTo18Decimals(1);
     const expectedOutputAmount = BigNumber.from("996006981039903216");
-    await token1.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
     await pair.swap(expectedOutputAmount, 0, wallet.address, "0x");
 
     const expectedLiquidity = expandTo18Decimals(1000);
@@ -684,7 +830,12 @@ describe("UniswapV2Pair", () => {
 
     const swapAmount = expandTo18Decimals(1);
     const expectedOutputAmount = BigNumber.from("996006981039903216");
-    await token1.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
+    await token1
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
     await pair.swap(expectedOutputAmount, 0, wallet.address, "0x");
 
     const expectedLiquidity = expandTo18Decimals(1000);
@@ -697,12 +848,18 @@ describe("UniswapV2Pair", () => {
 
     // using 1000 here instead of the symbolic MINIMUM_LIQUIDITY because the amounts only happen to be equal...
     // ...because the initial liquidity amounts were equal
-    expect(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      BigNumber.from(1000).add("249501683697445")
-    );
-    expect(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider})).to.eq(
-      BigNumber.from(1000).add("250000187312969")
-    );
+    expect(
+      await token0.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(BigNumber.from(1000).add("249501683697445"));
+    expect(
+      await token1.balanceOf({
+        account: pair.address,
+        providerOrSigner: ethers.provider,
+      })
+    ).to.eq(BigNumber.from(1000).add("250000187312969"));
   });
 
   it("twap:token0", async () => {
@@ -720,7 +877,7 @@ describe("UniswapV2Pair", () => {
     );
 
     // check initial reserves (shouldn't have changed)
-    let realTimeReserves =  await pair.getRealTimeReserves();
+    let realTimeReserves = await pair.getRealTimeReserves();
     expect(realTimeReserves._reserve0).to.equal(token0Amount);
     expect(realTimeReserves._reserve1).to.equal(token1Amount);
 
@@ -729,50 +886,77 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation = token0.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate
+      flowRate: flowRate,
     });
     const txnResponse = await createFlowOperation.exec(wallet);
     const txn = await txnResponse.wait();
-    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber))
+      .timestamp;
 
     // get amount after buffer
-    const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+    const walletBalanceAfterBuffer0 = BigNumber.from(
+      await token0.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    );
 
-    const checkStaticReserves = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
+    const checkStaticReserves = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
       expect(realTimeReserves._reserve0).to.equal(token0Amount);
       expect(realTimeReserves._reserve1).to.equal(token1Amount);
-    }
+    };
 
-    const checkReserves = async() => {
-      const time = (await ethers.provider.getBlock('latest')).timestamp;
+    const checkReserves = async () => {
+      const time = (await ethers.provider.getBlock("latest")).timestamp;
       const dt = time - timeStart;
 
       if (dt > 0) {
-        const realTimeReserves =  await pair.getRealTimeReserves();
+        const realTimeReserves = await pair.getRealTimeReserves();
         const totalAmountA = flowRate.mul(dt);
         const k = token0Amount.mul(token1Amount);
         const aNoFees = token0Amount.add(totalAmountA);
-        const aFees = token0Amount.add(totalAmountA.mul(10000 - UPPER_FEE).div(10000));
+        const aFees = token0Amount.add(
+          totalAmountA.mul(10000 - UPPER_FEE).div(10000)
+        );
         const b = k.div(aFees);
-        expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
+        expect(
+          await token0.balanceOf({
+            account: wallet.address,
+            providerOrSigner: ethers.provider,
+          })
+        ).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
         expect(realTimeReserves._reserve0).to.equal(aNoFees);
-        expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+        expect(realTimeReserves._reserve1).to.be.within(
+          b.mul(999).div(1000),
+          b
+        );
       } else {
         await checkStaticReserves();
       }
-    }
+    };
 
-    const checkBalances = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
-      const poolBalance1 = BigNumber.from(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
-      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+    const checkBalances = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
+      const poolBalance1 = BigNumber.from(
+        await token1.balanceOf({
+          account: pair.address,
+          providerOrSigner: ethers.provider,
+        })
+      );
+      const walletSwapBalances = await pair.getRealTimeUserBalances(
+        wallet.address
+      );
 
       // perfect case:          (reserve + all user balances) = poolBalance
       // never allowed:         (reserve + all user balances) > poolBalance
       // dust amounts allowed:  (reserve + all user balances) < poolBalance
-      expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
-    }
+      expect(
+        poolBalance1.sub(
+          realTimeReserves._reserve1.add(walletSwapBalances.balance1)
+        )
+      ).to.be.within(0, 100);
+    };
 
     // check reserves (1-2 sec may have passed, so check timestamp)
     await checkReserves();
@@ -785,20 +969,39 @@ describe("UniswapV2Pair", () => {
 
     // cancel stream and check that swapped balance is withdrawn
     const baseToken1Balance = expandTo18Decimals(10000).sub(token1Amount);
-    expect(BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken1Balance);
-    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    expect(
+      BigNumber.from(
+        await token1.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      )
+    ).to.be.equal(baseToken1Balance);
+    let latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     let nextBlockTime = latestTime + 10;
-    const expectedAmountsOut = await pair.getUserBalancesAtTime(wallet.address, nextBlockTime);
+    const expectedAmountsOut = await pair.getUserBalancesAtTime(
+      wallet.address,
+      nextBlockTime
+    );
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     const deleteFlowOperation = token0.deleteFlow({
       sender: wallet.address,
-      receiver: pair.address
+      receiver: pair.address,
     });
     const txnResponse2 = await deleteFlowOperation.exec(wallet);
     await txnResponse2.wait();
-    expect(BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken1Balance.add(expectedAmountsOut.balance1));
+    expect(
+      BigNumber.from(
+        await token1.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      )
+    ).to.be.equal(baseToken1Balance.add(expectedAmountsOut.balance1));
 
-    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
+    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(
+      wallet.address
+    );
     expect(newExpectedAmountsOut.balance1).to.be.equal(BigNumber.from(0));
 
     // TODO: check that total locked swapped amount is 0 (or dust amount? TODO: is dust amount okay?)
@@ -819,7 +1022,7 @@ describe("UniswapV2Pair", () => {
     );
 
     // check initial reserves (shouldn't have changed)
-    let realTimeReserves =  await pair.getRealTimeReserves();
+    let realTimeReserves = await pair.getRealTimeReserves();
     expect(realTimeReserves._reserve0).to.equal(token0Amount);
     expect(realTimeReserves._reserve1).to.equal(token1Amount);
 
@@ -828,50 +1031,77 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation = token1.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate
+      flowRate: flowRate,
     });
     const txnResponse = await createFlowOperation.exec(wallet);
     const txn = await txnResponse.wait();
-    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber))
+      .timestamp;
 
     // get amount after buffer
-    const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+    const walletBalanceAfterBuffer1 = BigNumber.from(
+      await token1.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    );
 
-    const checkStaticReserves = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
+    const checkStaticReserves = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
       expect(realTimeReserves._reserve0).to.equal(token0Amount);
       expect(realTimeReserves._reserve1).to.equal(token1Amount);
-    }
+    };
 
-    const checkReserves = async() => {
-      const time = (await ethers.provider.getBlock('latest')).timestamp;
+    const checkReserves = async () => {
+      const time = (await ethers.provider.getBlock("latest")).timestamp;
       const dt = time - timeStart;
 
       if (dt > 0) {
-        const realTimeReserves =  await pair.getRealTimeReserves();
+        const realTimeReserves = await pair.getRealTimeReserves();
         const totalAmountB = flowRate.mul(dt);
         const k = token0Amount.mul(token1Amount);
         const bNoFees = token1Amount.add(totalAmountB);
-        const bFees = token1Amount.add(totalAmountB.mul(10000 - UPPER_FEE).div(10000));
+        const bFees = token1Amount.add(
+          totalAmountB.mul(10000 - UPPER_FEE).div(10000)
+        );
         const a = k.div(bFees);
-        expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
+        expect(
+          await token1.balanceOf({
+            account: wallet.address,
+            providerOrSigner: ethers.provider,
+          })
+        ).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
         expect(realTimeReserves._reserve1).to.equal(bNoFees);
-        expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+        expect(realTimeReserves._reserve0).to.be.within(
+          a.mul(999).div(1000),
+          a
+        );
       } else {
         await checkStaticReserves();
       }
-    }
+    };
 
-    const checkBalances = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
-      const poolBalance0 = BigNumber.from(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
-      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+    const checkBalances = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
+      const poolBalance0 = BigNumber.from(
+        await token0.balanceOf({
+          account: pair.address,
+          providerOrSigner: ethers.provider,
+        })
+      );
+      const walletSwapBalances = await pair.getRealTimeUserBalances(
+        wallet.address
+      );
 
       // perfect case:          (reserve + all user balances) = poolBalance
       // never allowed:         (reserve + all user balances) > poolBalance
       // dust amounts allowed:  (reserve + all user balances) < poolBalance
-      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
-    }
+      expect(
+        poolBalance0.sub(
+          realTimeReserves._reserve0.add(walletSwapBalances.balance0)
+        )
+      ).to.be.within(0, 100);
+    };
 
     // check reserves (1-2 sec may have passed, so check timestamp)
     await checkReserves();
@@ -884,20 +1114,39 @@ describe("UniswapV2Pair", () => {
 
     // cancel stream and check that swapped balance is withdrawn
     const baseToken0Balance = expandTo18Decimals(10000).sub(token0Amount);
-    expect(BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken0Balance);
-    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    expect(
+      BigNumber.from(
+        await token0.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      )
+    ).to.be.equal(baseToken0Balance);
+    let latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     let nextBlockTime = latestTime + 10;
-    const expectedAmountsOut = await pair.getUserBalancesAtTime(wallet.address, nextBlockTime);
+    const expectedAmountsOut = await pair.getUserBalancesAtTime(
+      wallet.address,
+      nextBlockTime
+    );
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     const deleteFlowOperation = token1.deleteFlow({
       sender: wallet.address,
-      receiver: pair.address
+      receiver: pair.address,
     });
     const txnResponse2 = await deleteFlowOperation.exec(wallet);
     await txnResponse2.wait();
-    expect(BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}))).to.be.equal(baseToken0Balance.add(expectedAmountsOut.balance0));
+    expect(
+      BigNumber.from(
+        await token0.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      )
+    ).to.be.equal(baseToken0Balance.add(expectedAmountsOut.balance0));
 
-    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(wallet.address);
+    const newExpectedAmountsOut = await pair.getRealTimeUserBalances(
+      wallet.address
+    );
     expect(newExpectedAmountsOut.balance0).to.be.equal(BigNumber.from(0));
   });
 
@@ -916,7 +1165,7 @@ describe("UniswapV2Pair", () => {
     );
 
     // check initial reserves (shouldn't have changed)
-    let realTimeReserves =  await pair.getRealTimeReserves();
+    let realTimeReserves = await pair.getRealTimeReserves();
     expect(realTimeReserves._reserve0).to.equal(token0Amount);
     expect(realTimeReserves._reserve1).to.equal(token1Amount);
 
@@ -925,7 +1174,7 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation0 = token0.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate0
+      flowRate: flowRate0,
     });
 
     // create a stream of token1
@@ -933,51 +1182,86 @@ describe("UniswapV2Pair", () => {
     const createFlowOperation1 = token1.createFlow({
       sender: wallet.address,
       receiver: pair.address,
-      flowRate: flowRate1
+      flowRate: flowRate1,
     });
 
     // batch both together
-    const batchCall = sf.batchCall([createFlowOperation0, createFlowOperation1]);
+    const batchCall = sf.batchCall([
+      createFlowOperation0,
+      createFlowOperation1,
+    ]);
     const txnResponse = await batchCall.exec(wallet);
     const txn = await txnResponse.wait();
-    const timeStart = (await ethers.provider.getBlock(txn.blockNumber)).timestamp;
+    const timeStart = (await ethers.provider.getBlock(txn.blockNumber))
+      .timestamp;
 
     // get amounts after buffer
-    const walletBalanceAfterBuffer0 = BigNumber.from(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
-    const walletBalanceAfterBuffer1 = BigNumber.from(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider}));
+    const walletBalanceAfterBuffer0 = BigNumber.from(
+      await token0.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    );
+    const walletBalanceAfterBuffer1 = BigNumber.from(
+      await token1.balanceOf({
+        account: wallet.address,
+        providerOrSigner: ethers.provider,
+      })
+    );
 
     //////////////////////////////////////////////////////
     //                                                  //
     //   ref. https://www.paradigm.xyz/2021/07/twamm    //
     //                                                  //
     //////////////////////////////////////////////////////
-    const checkDynamicReservesParadigmFormula = async(dt: number) => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
+    const checkDynamicReservesParadigmFormula = async (dt: number) => {
+      const realTimeReserves = await pair.getRealTimeReserves();
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
       const totalFlowA = parseFloat(flowRate0.toString());
       const totalFlowB = parseFloat(flowRate1.toString());
       const k = poolReserveA * poolReserveB;
 
-      const c = (
-        Math.sqrt(poolReserveA * (totalFlowB * dt)) - Math.sqrt(poolReserveB * (totalFlowA * dt))) 
-        / 
-        (Math.sqrt(poolReserveA * (totalFlowB * dt)) + Math.sqrt(poolReserveB * (totalFlowA * dt))
-      );
-      const a = (
-          Math.sqrt((k * (totalFlowA * dt)) / (totalFlowB * dt)) 
-          * 
-          (Math.pow(Math.E, (2 * Math.sqrt(((totalFlowA * dt) * (totalFlowB * dt)) / k))) + c) 
-          / 
-          (Math.pow(Math.E, (2 * Math.sqrt(((totalFlowA * dt) * (totalFlowB * dt)) / k))) - c)
-      );
+      const c =
+        (Math.sqrt(poolReserveA * (totalFlowB * dt)) -
+          Math.sqrt(poolReserveB * (totalFlowA * dt))) /
+        (Math.sqrt(poolReserveA * (totalFlowB * dt)) +
+          Math.sqrt(poolReserveB * (totalFlowA * dt)));
+      const a =
+        (Math.sqrt((k * (totalFlowA * dt)) / (totalFlowB * dt)) *
+          (Math.pow(
+            Math.E,
+            2 * Math.sqrt((totalFlowA * dt * (totalFlowB * dt)) / k)
+          ) +
+            c)) /
+        (Math.pow(
+          Math.E,
+          2 * Math.sqrt((totalFlowA * dt * (totalFlowB * dt)) / k)
+        ) -
+          c);
       const b = k / a;
 
-      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
-      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
-      expect(realTimeReserves._reserve0).to.be.within(BigNumber.from((a * 0.9999999999).toString()), BigNumber.from(a.toString()));
-      expect(realTimeReserves._reserve1).to.be.within(BigNumber.from((b * 0.999).toString()), BigNumber.from(b.toString()));
-    }
+      expect(
+        await token0.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      ).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
+      expect(
+        await token1.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      ).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
+      expect(realTimeReserves._reserve0).to.be.within(
+        BigNumber.from((a * 0.9999999999).toString()),
+        BigNumber.from(a.toString())
+      );
+      expect(realTimeReserves._reserve1).to.be.within(
+        BigNumber.from((b * 0.999).toString()),
+        BigNumber.from(b.toString())
+      );
+    };
 
     //////////////////////////////////////////////////////////
     //                                                      //
@@ -985,33 +1269,52 @@ describe("UniswapV2Pair", () => {
     //    a = √(k * (A + (r_A * dt)) / (B + (r_B * dt)))    //
     //                                                      //
     //////////////////////////////////////////////////////////
-    const checkDynamicReservesParadigmApprox = async(dt: number) => {
+    const checkDynamicReservesParadigmApprox = async (dt: number) => {
       const realTimeReserves = await pair.getRealTimeReserves();
       const poolReserveA = parseFloat(token0Amount.toString());
       const poolReserveB = parseFloat(token1Amount.toString());
-      const totalFlowA = parseFloat(flowRate0.toString()) * (10000 - UPPER_FEE) / 10000; // upper fee should be taken from input amounts
-      const totalFlowB = parseFloat(flowRate1.toString()) * (10000 - UPPER_FEE) / 10000;
+      const totalFlowA =
+        (parseFloat(flowRate0.toString()) * (10000 - UPPER_FEE)) / 10000; // upper fee should be taken from input amounts
+      const totalFlowB =
+        (parseFloat(flowRate1.toString()) * (10000 - UPPER_FEE)) / 10000;
       const k = poolReserveA * poolReserveB;
 
-      const a = (
-        Math.sqrt(k * (poolReserveA + (totalFlowA * dt)) / (poolReserveB + (totalFlowB * dt)))
+      const a = Math.sqrt(
+        (k * (poolReserveA + totalFlowA * dt)) /
+          (poolReserveB + totalFlowB * dt)
       );
       const b = k / a;
 
-      expect(await token0.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
-      expect(await token1.balanceOf({account: wallet.address, providerOrSigner: ethers.provider})).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
-      expect(realTimeReserves._reserve0).to.be.within(BigNumber.from((a * 0.9999999999).toString()), BigNumber.from((a * 1.00000001).toString()));
-      expect(realTimeReserves._reserve1).to.be.within(BigNumber.from((b * 0.9999999999).toString()), BigNumber.from((b * 1.00000001).toString()));
-    }
+      expect(
+        await token0.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      ).to.equal(walletBalanceAfterBuffer0.sub(flowRate0.mul(dt)));
+      expect(
+        await token1.balanceOf({
+          account: wallet.address,
+          providerOrSigner: ethers.provider,
+        })
+      ).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
+      expect(realTimeReserves._reserve0).to.be.within(
+        BigNumber.from((a * 0.9999999999).toString()),
+        BigNumber.from((a * 1.00000001).toString())
+      );
+      expect(realTimeReserves._reserve1).to.be.within(
+        BigNumber.from((b * 0.9999999999).toString()),
+        BigNumber.from((b * 1.00000001).toString())
+      );
+    };
 
-    const checkStaticReserves = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
+    const checkStaticReserves = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
       expect(realTimeReserves._reserve0).to.equal(token0Amount);
       expect(realTimeReserves._reserve1).to.equal(token1Amount);
-    }
+    };
 
-    const checkReserves = async() => {
-      const time = (await ethers.provider.getBlock('latest')).timestamp;
+    const checkReserves = async () => {
+      const time = (await ethers.provider.getBlock("latest")).timestamp;
       const dt = time - timeStart;
 
       if (dt > 0) {
@@ -1019,20 +1322,40 @@ describe("UniswapV2Pair", () => {
       } else {
         await checkStaticReserves();
       }
-    }
+    };
 
-    const checkBalances = async() => {
-      const realTimeReserves =  await pair.getRealTimeReserves();
-      const poolBalance0 = BigNumber.from(await token0.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
-      const poolBalance1 = BigNumber.from(await token1.balanceOf({account: pair.address, providerOrSigner: ethers.provider}));
-      const walletSwapBalances = await pair.getRealTimeUserBalances(wallet.address);
+    const checkBalances = async () => {
+      const realTimeReserves = await pair.getRealTimeReserves();
+      const poolBalance0 = BigNumber.from(
+        await token0.balanceOf({
+          account: pair.address,
+          providerOrSigner: ethers.provider,
+        })
+      );
+      const poolBalance1 = BigNumber.from(
+        await token1.balanceOf({
+          account: pair.address,
+          providerOrSigner: ethers.provider,
+        })
+      );
+      const walletSwapBalances = await pair.getRealTimeUserBalances(
+        wallet.address
+      );
 
       // perfect case:          (reserve + all user balances + collected fees) = poolBalance
       // never allowed:         (reserve + all user balances) > poolBalance
       // dust amounts allowed:  (reserve + all user balances) < poolBalance
-      expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100); // within 0-100 wei
-      expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
-    }
+      expect(
+        poolBalance0.sub(
+          realTimeReserves._reserve0.add(walletSwapBalances.balance0)
+        )
+      ).to.be.within(0, 100); // within 0-100 wei
+      expect(
+        poolBalance1.sub(
+          realTimeReserves._reserve1.add(walletSwapBalances.balance1)
+        )
+      ).to.be.within(0, 100);
+    };
 
     // check reserves (1-2 sec may have passed, so check timestamp)
     await checkReserves();
@@ -1047,36 +1370,64 @@ describe("UniswapV2Pair", () => {
     // Solution: just test in two separate blocks and re-calculate expectedOutputAmount
 
     // make a bad discrete swap (expect revert)
-    let latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    let latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     let nextBlockTime = latestTime + 10;
-    let swapAmount = BigNumber.from('10000000000000');
-    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
-    let realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
-    let expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    let swapAmount = BigNumber.from("10000000000000");
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
+    let realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
+    let expectedOutputAmount = realTimeReserves2._reserve1
+      .sub(
+        realTimeReserves2._reserve0
+          .mul(realTimeReserves2._reserve1)
+          .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+      )
+      .sub(1);
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     await expect(
-      pair.swap(0, expectedOutputAmount.add('1'), wallet.address, "0x")
+      pair.swap(0, expectedOutputAmount.add("1"), wallet.address, "0x")
     ).to.be.revertedWith("UniswapV2: K");
 
     // make a correct discrete swap
-    latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     nextBlockTime = latestTime + 10;
-    realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
-    expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
+    expectedOutputAmount = realTimeReserves2._reserve1
+      .sub(
+        realTimeReserves2._reserve0
+          .mul(realTimeReserves2._reserve1)
+          .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+      )
+      .sub(1);
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
 
-    // should adequately check that the _update() function properly set reserves and accumulators 
+    // should adequately check that the _update() function properly set reserves and accumulators
     await checkBalances();
     await delay(60);
     await checkBalances();
 
     // make another discrete swap (checks totalSwappedFunds{0,1} are updated correctly (in _update() function))
-    latestTime = (await ethers.provider.getBlock('latest')).timestamp;
+    latestTime = (await ethers.provider.getBlock("latest")).timestamp;
     nextBlockTime = latestTime + 10;
-    await token0.transfer({receiver: pair.address, amount: swapAmount}).exec(wallet);
-    realTimeReserves2 =  await pair.getReservesAtTime(nextBlockTime);
-    expectedOutputAmount = realTimeReserves2._reserve1.sub((realTimeReserves2._reserve0.mul(realTimeReserves2._reserve1)).div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))).sub(1);
+    await token0
+      .transfer({
+        receiver: pair.address,
+        amount: swapAmount,
+      })
+      .exec(wallet);
+    realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
+    expectedOutputAmount = realTimeReserves2._reserve1
+      .sub(
+        realTimeReserves2._reserve0
+          .mul(realTimeReserves2._reserve1)
+          .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+      )
+      .sub(1);
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
     await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
   });

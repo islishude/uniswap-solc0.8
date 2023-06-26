@@ -47,7 +47,10 @@ contract UniswapV2Factory is IUniswapV2Factory {
                 salt: keccak256(abi.encodePacked(token0, token1))
             }(_host)
         );
-        IUniswapV2Pair(pair).initialize(ISuperToken(token0), ISuperToken(token1));
+        IUniswapV2Pair(pair).initialize(
+            ISuperToken(token0),
+            ISuperToken(token1)
+        );
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);

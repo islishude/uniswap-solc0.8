@@ -3,7 +3,7 @@ import { constants as ethconst, Wallet } from "ethers";
 import { UniswapV2Factory } from "../../typechain-types";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
-import { getCreate2Address } from "./shared/utilities";
+import { getCreate2Address } from "../test/shared/utilities";
 import { ethers } from "hardhat";
 
 const TEST_ADDRESSES: [string, string] = [
@@ -15,7 +15,7 @@ describe("UniswapV2Factory", () => {
   async function fixture() {
     const tmp = await ethers.getContractFactory("UniswapV2Factory");
     const [wallet, other] = await ethers.getSigners();
-    const factory = await tmp.deploy(wallet.address);
+    const factory = await tmp.deploy(wallet.address, "");
     return { factory: factory, wallet, other };
   }
 

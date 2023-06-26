@@ -7,7 +7,7 @@ import {
   expandTo18Decimals,
   MINIMUM_LIQUIDITY,
   UniswapVersion,
-} from "./shared/utilities";
+} from "../test/shared/utilities";
 import { UniswapV2Pair } from "../../typechain-types";
 
 describe("UniswapV2Router", () => {
@@ -27,7 +27,7 @@ describe("UniswapV2Router", () => {
 
     // deploy V2
     const v2factory = await ethers.getContractFactory("UniswapV2Factory");
-    const factoryV2 = await v2factory.deploy(wallet.address);
+    const factoryV2 = await v2factory.deploy(wallet.address, "");
 
     const routerEmit = await ethers.getContractFactory("RouterEventEmitter");
 
