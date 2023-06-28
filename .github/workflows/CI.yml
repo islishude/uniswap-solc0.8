@@ -6,7 +6,37 @@ on:
       - main
   pull_request:
 
+env:
+  FOUNDRY_PROFILE: ci
+
 jobs:
+  foundry:
+    strategy:
+      fail-fast: true
+
+    name: Foundry project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run forge build
+        run: |
+          forge --version
+          forge build --sizes
+        id: build
+
+      - name: Run Forge tests
+        run: |
+          forge test -vvv
+        id: test
+
   hardhat:
     strategy:
       fail-fast: true
@@ -24,16 +54,16 @@ jobs:
           node-version: "16.x"
           cache: "yarn"
 
-      - name: Install Node dependencies
+      - name: Install Yarn dependencies
         run: yarn install --frozen-lockfile
 
       - name: Lint
         run: yarn lint
 
-      - name: Compile
-        run: yarn compile
+      - name: Run hardhat compile
+        run: yarn build:hardhat
 
       - name: Run Hardhat tests
         run: |
-          yarn test
+          yarn test:hardhat
         id: hardhat-test
