@@ -3,6 +3,8 @@ import "@nomicfoundation/hardhat-toolbox";
 import "hardhat-preprocessor";
 import fs from "fs";
 import * as dotenv from "dotenv";
+import "./tasks/accounts";
+
 dotenv.config();
 
 function getRemappings() {
@@ -12,9 +14,6 @@ function getRemappings() {
         .filter(Boolean) // remove empty lines
         .map((line) => line.trim().split("="));
 }
-
-// tasks
-import "./tasks/accounts";
 
 const config: HardhatUserConfig = {
     networks: {
@@ -60,7 +59,6 @@ const config: HardhatUserConfig = {
     paths: {
         sources: "./src",
         cache: "./cache_hardhat",
-        // tests: "./src/test",
     },
 };
 
