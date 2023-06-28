@@ -56,8 +56,8 @@
     "typescript": "^4.8.4"
   },
   "scripts": {
-    "lint": "prettier --check src/**/*.ts contracts/**/*.sol && solhint -f table 'contracts/**/*.sol'",
-    "lint:fix": "prettier --write src/**/*.ts contracts/**/*.sol",
+    "lint": "prettier --check test/**/*.ts src/**/*.sol && solhint -f table 'src/**/*.sol'",
+    "lint:fix": "prettier --write test/**/*.ts src/**/*.sol",
     "clean": "rimraf artifacts cache types",
     "precompile": "yarn clean",
     "build:foundry": "forge build",
