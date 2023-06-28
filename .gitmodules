@@ -4,3 +4,6 @@
 [submodule "lib/ethereum-contracts"]
 	path = lib/ethereum-contracts
 	url = https://github.com/superfluid-finance/ethereum-contracts
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
