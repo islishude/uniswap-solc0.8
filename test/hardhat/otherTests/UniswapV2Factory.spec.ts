@@ -1,9 +1,9 @@
 import { expect } from "chai";
 import { constants as ethconst, Wallet } from "ethers";
-import { UniswapV2Factory } from "../../typechain-types";
+import { UniswapV2Factory } from "../../../typechain-types";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
-import { getCreate2Address } from "../test/shared/utilities";
+import { getCreate2Address } from "../shared/utilities";
 import { ethers } from "hardhat";
 
 const TEST_ADDRESSES: [string, string] = [

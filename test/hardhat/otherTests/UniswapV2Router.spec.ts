@@ -3,8 +3,8 @@ import { expect } from "chai";
 import { BigNumber, Contract } from "ethers";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { expandTo18Decimals, MINIMUM_LIQUIDITY, UniswapVersion } from "../test/shared/utilities";
-import { UniswapV2Pair } from "../../typechain-types";
+import { expandTo18Decimals, MINIMUM_LIQUIDITY, UniswapVersion } from "../shared/utilities";
+import { UniswapV2Pair } from "../../../typechain-types";
 
 describe("UniswapV2Router", () => {
     async function v2Fixture() {
