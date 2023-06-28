@@ -71,13 +71,13 @@ before(async function () {
     });
 
     // DEPLOYING DAI and DAI wrapper super token (which will be our `spreaderToken`)
-    await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
+    await sfDeployer.frameworkDeployer.deployWrapperSuperToken(
         "Base Token A",
         "baseTokenA",
         18,
         ethers.utils.parseEther("10000").toString()
     );
-    await sfDeployer.superTokenDeployer.deployWrapperSuperToken(
+    await sfDeployer.frameworkDeployer.deployWrapperSuperToken(
         "Base Token B",
         "baseTokenB",
         18,
