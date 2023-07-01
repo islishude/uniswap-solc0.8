@@ -1,0 +1,4 @@
+ds-test/=lib/forge-std/lib/ds-test/src/
+forge-std/=lib/forge-std/src/
+@superfluid-finance/ethereum-contracts/=lib/ethereum-contracts/packages/ethereum-contracts/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/

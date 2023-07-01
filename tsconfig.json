@@ -14,5 +14,5 @@
   },
   "exclude": ["node_modules"],
   "files": ["./hardhat.config.ts"],
-  "include": ["src", "typechain-types"]
+  "include": ["typechain-types", "tasks", "test/hardhat", "script/hardhat"]
 }
