@@ -1,18 +1,18 @@
 {
-  "name": "@uniswap/v2-core",
-  "description": "Build uniswap v2 with solidity 0.8",
-  "version": "1.0.1",
-  "homepage": "https://uniswap.org",
+  "name": "aqueduct-twamm",
+  "description": "Core contracts for Auwduct's Time-Weighted Auotmated Market Maker (TWAMM). Bootstrapped from a uniswap v2 fork with solidity 0.8",
+  "version": "1.0.0",
+  "homepage": "https://www.aqueduct.fi/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/islishude/uniswapv2-solc0.8"
+    "url": "https://github.com/aqueduct-finance/aqueduct-twamm"
   },
   "keywords": [
-    "uniswap",
     "ethereum",
-    "v2",
-    "core",
-    "uniswap-v2"
+    "uniswap-v2",
+    "aqueduct",
+    "superfluid",
+    "TWAMM"
   ],
   "files": [
     "contracts",

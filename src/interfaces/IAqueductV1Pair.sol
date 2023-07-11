@@ -7,9 +7,9 @@ pragma solidity >=0.5.0;
 
 import {ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
-import "./IUniswapV2ERC20.sol";
+import "./IAqueductV1ERC20.sol";
 
-interface IUniswapV2Pair is IUniswapV2ERC20 {
+interface IAqueductV1Pair is IAqueductV1ERC20 {
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Burn(address indexed sender, uint256 amount0, uint256 amount1, address indexed to);
     event Swap(

@@ -4,7 +4,7 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
 import { expandTo18Decimals, encodePrice } from "./shared/utilities";
-import { UniswapV2Pair } from "../../typechain-types";
+import { AqueductV1Pair } from "../../typechain-types";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
@@ -110,16 +110,16 @@ before(async function () {
 
 const MINIMUM_LIQUIDITY = BigNumber.from(10).pow(3);
 
-describe("UniswapV2Pair", () => {
+describe("AqueductV1Pair", () => {
     async function fixture() {
         const [wallet, other] = await ethers.getSigners();
 
         const factory = await (
-            await ethers.getContractFactory("UniswapV2Factory")
+            await ethers.getContractFactory("AqueductV1Factory")
         ).deploy(wallet.address, contractsFramework.host);
 
         await factory.createPair(tokenA.address, tokenB.address);
-        const pair = (await ethers.getContractFactory("UniswapV2Pair")).attach(
+        const pair = (await ethers.getContractFactory("AqueductV1Pair")).attach(
             await factory.getPair(tokenA.address, tokenB.address)
         );
         const token0Address = await pair.token0();
@@ -257,7 +257,7 @@ describe("UniswapV2Pair", () => {
     async function addLiquidity(
         token0: any,
         token1: any,
-        pair: UniswapV2Pair,
+        pair: AqueductV1Pair,
         wallet: SignerWithAddress,
         token0Amount: BigNumber,
         token1Amount: BigNumber
@@ -301,7 +301,7 @@ describe("UniswapV2Pair", () => {
                 })
                 .exec(wallet);
             await expect(pair.swap(0, expectedOutputAmount.add(1), wallet.address, "0x")).to.be.revertedWith(
-                "UniswapV2: K"
+                "AqueductV1: K"
             );
             await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
         });
@@ -325,7 +325,7 @@ describe("UniswapV2Pair", () => {
                     amount: inputAmount,
                 })
                 .exec(wallet);
-            await expect(pair.swap(outputAmount.add(1), 0, wallet.address, "0x")).to.be.revertedWith("UniswapV2: K");
+            await expect(pair.swap(outputAmount.add(1), 0, wallet.address, "0x")).to.be.revertedWith("AqueductV1: K");
             await pair.swap(outputAmount, 0, wallet.address, "0x");
         });
     });
@@ -1132,7 +1132,7 @@ describe("UniswapV2Pair", () => {
             .sub(1);
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
         await expect(pair.swap(0, expectedOutputAmount.add("1"), wallet.address, "0x")).to.be.revertedWith(
-            "UniswapV2: K"
+            "AqueductV1: K"
         );
 
         // make a correct discrete swap

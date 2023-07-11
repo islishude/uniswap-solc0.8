@@ -2,12 +2,12 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { BigNumber } from "ethers";
-import { expandTo18Decimals, UniswapVersion } from "./shared/utilities";
+import { expandTo18Decimals, AqueductVersion } from "./shared/utilities";
 
 const TOTAL_SUPPLY = expandTo18Decimals(10000);
 const TEST_AMOUNT = expandTo18Decimals(10);
 
-describe("UniswapV2ERC20", () => {
+describe("AqueductV1ERC20", () => {
     async function fixture() {
         const factory = await ethers.getContractFactory("ERC20");
         const token = await factory.deploy(TOTAL_SUPPLY);
@@ -18,8 +18,8 @@ describe("UniswapV2ERC20", () => {
     it("name, symbol, decimals, totalSupply, balanceOf, DOMAIN_SEPARATOR, PERMIT_TYPEHASH", async () => {
         const { token, wallet } = await loadFixture(fixture);
         const name = await token.name();
-        expect(name).to.eq("Uniswap V2");
-        expect(await token.symbol()).to.eq("UNI-V2");
+        expect(name).to.eq("Aqueduct V1");
+        expect(await token.symbol()).to.eq("AQUA-V1");
         expect(await token.decimals()).to.eq(18);
         expect(await token.totalSupply()).to.eq(TOTAL_SUPPLY);
         expect(await token.balanceOf(wallet.address)).to.eq(TOTAL_SUPPLY);
@@ -35,7 +35,7 @@ describe("UniswapV2ERC20", () => {
                             )
                         ),
                         ethers.utils.keccak256(ethers.utils.toUtf8Bytes(name)),
-                        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(UniswapVersion)),
+                        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(AqueductVersion)),
                         chainId,
                         token.address,
                     ]
@@ -108,7 +108,7 @@ describe("UniswapV2ERC20", () => {
             // "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
             {
                 name: tokenName,
-                version: UniswapVersion,
+                version: AqueductVersion,
                 chainId: chainId,
                 verifyingContract: token.address,
             },

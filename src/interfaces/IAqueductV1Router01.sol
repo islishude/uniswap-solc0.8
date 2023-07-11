@@ -4,7 +4,7 @@ pragma solidity ^0.8.12;
 
 //solhint-disable func-name-mixedcase
 
-interface IUniswapV2Router01 {
+interface IAqueductV1Router01 {
     function factory() external view returns (address);
 
     function WETH() external view returns (address);
