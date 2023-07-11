@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
-import "./interfaces/IAqueductV1Factory.sol";
-import "./AqueductV1Pair.sol";
+import {IAqueductV1Factory} from "./interfaces/IAqueductV1Factory.sol";
+import {AqueductV1Pair} from "./AqueductV1Pair.sol";
+import {IAqueductV1Pair} from "./interfaces/IAqueductV1Pair.sol";
+import {ISuperfluid, ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
 contract AqueductV1Factory is IAqueductV1Factory {
     bytes32 public constant PAIR_HASH = keccak256(type(AqueductV1Pair).creationCode);
@@ -15,7 +16,7 @@ contract AqueductV1Factory is IAqueductV1Factory {
     address[] public override allPairs;
 
     // superfluid
-    ISuperfluid _host;
+    ISuperfluid internal _host;
 
     constructor(address _feeToSetter, ISuperfluid host) {
         assert(address(host) != address(0));

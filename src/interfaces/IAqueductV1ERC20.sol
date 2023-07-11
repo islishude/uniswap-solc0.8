@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
-//solhint-disable-next-line compiler-version
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.12;
 
 //solhint-disable func-name-mixedcase
 interface IAqueductV1ERC20 {

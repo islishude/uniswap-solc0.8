@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
 //solhint-disable reason-string
 
-import "../interfaces/IAqueductV1Pair.sol";
+import {IAqueductV1Pair} from "../interfaces/IAqueductV1Pair.sol";
 
 library AqueductV1Library {
     // returns sorted token addresses, used to handle return values from pairs sorted in this order

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
 import {ISuperfluid, ISuperToken, ISuperfluidToken, ISuperApp, ISuperAgreement, SuperAppDefinitions} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
@@ -7,13 +6,13 @@ import {SuperAppBase} from "@superfluid-finance/ethereum-contracts/contracts/app
 import {CFAv1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/CFAv1Library.sol";
 import {IConstantFlowAgreementV1} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol";
 
-import "./interfaces/IAqueductV1Pair.sol";
-import "./AqueductV1ERC20.sol";
-import "./libraries/Math.sol";
-import "./libraries/UQ112x112.sol";
-import "./interfaces/IERC20.sol";
-import "./interfaces/IAqueductV1Factory.sol";
-import "./interfaces/IAqueductV1Callee.sol";
+import {IAqueductV1Pair} from "./interfaces/IAqueductV1Pair.sol";
+import {AqueductV1ERC20} from "./AqueductV1ERC20.sol";
+import {Math} from "./libraries/Math.sol";
+import {UQ112x112} from "./libraries/UQ112x112.sol";
+import {IERC20} from "./interfaces/IERC20.sol";
+import {IAqueductV1Factory} from "./interfaces/IAqueductV1Factory.sol";
+import {IAqueductV1Callee} from "./interfaces/IAqueductV1Callee.sol";
 
 //solhint-disable func-name-mixedcase
 //solhint-disable avoid-low-level-calls
@@ -40,21 +39,23 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     uint256 public override kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
     // for TWAP balance tracking (use blockTimestampLast)
-    uint public twap0CumulativeLast;
-    uint public twap1CumulativeLast;
-    mapping(address => uint) userStartingCumulatives0;
-    mapping(address => uint) userStartingCumulatives1;
+    uint256 public twap0CumulativeLast;
+    uint256 public twap1CumulativeLast;
+    mapping(address => uint256) public userStartingCumulatives0;
+    mapping(address => uint256) public userStartingCumulatives1;
     uint112 private totalSwappedFunds0;
     uint112 private totalSwappedFunds1;
 
     // superfluid
     using CFAv1Library for CFAv1Library.InitData;
+
     CFAv1Library.InitData public cfaV1;
     bytes32 public constant CFA_ID = keccak256("org.superfluid-finance.agreements.ConstantFlowAgreement.v1");
-    IConstantFlowAgreementV1 cfa;
-    ISuperfluid _host;
+    IConstantFlowAgreementV1 public cfa;
+    ISuperfluid public _host;
 
     uint256 private unlocked = 1;
+
     modifier lock() {
         require(unlocked == 1, "AqueductV1: LOCKED");
         unlocked = 0;
@@ -86,7 +87,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 totalFlow1
     ) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint32 timeElapsed = time - blockTimestampLast;
-        uint _kLast = uint256(reserve0) * reserve1;
+        uint256 _kLast = uint256(reserve0) * reserve1;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
             // use approximation:
@@ -131,21 +132,21 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         if (totalFlow0 > 0 && totalFlow1 > 0) {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
-                int reserve0Diff = (int(uint(reserve0)) - int(uint(_reserve0)));
+                int256 reserve0Diff = (int256(uint256(reserve0)) - int256(uint256(_reserve0)));
                 _reserve0 += uint112(
-                    uint(
-                        int(uint(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
+                    uint256(
+                        int256(uint256(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
                             (reserve0Diff -
                                 ((reserve0Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
                     )
                 );
                 _reserve1 += ((totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000);
             } else if (flowDirection < totalFlow1) {
-                int reserve1Diff = (int(uint(reserve1)) - int(uint(_reserve1)));
+                int256 reserve1Diff = (int256(uint256(reserve1)) - int256(uint256(_reserve1)));
                 _reserve0 += ((totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) + reserve0 - _reserve0;
                 _reserve1 += uint112(
-                    uint(
-                        int(uint(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
+                    uint256(
+                        int256(uint256(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
                             (reserve1Diff -
                                 ((reserve1Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
                     )
@@ -168,7 +169,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
     }
 
-    function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint time) {
+    function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint256 time) {
         (_reserve0, _reserve1) = getReservesAtTime(uint32(block.timestamp % 2 ** 32));
         time = block.timestamp;
     }
@@ -179,7 +180,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 _reserve1,
         uint112 totalFlow0,
         uint112 totalFlow1
-    ) internal view returns (uint _twap0CumulativeLast, uint _twap1CumulativeLast) {
+    ) internal view returns (uint256 _twap0CumulativeLast, uint256 _twap1CumulativeLast) {
         uint32 timeElapsed = time - blockTimestampLast;
         _twap0CumulativeLast = twap0CumulativeLast;
         _twap1CumulativeLast = twap1CumulativeLast;
@@ -192,9 +193,9 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                     UQ112x112
                         .encode(
                             uint112(
-                                uint(
-                                    int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int(uint(reserve0)) - int(uint(_reserve0))) *
+                                uint256(
+                                    int256(uint256(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                        (((int256(uint256(reserve0)) - int256(uint256(_reserve0))) *
                                             int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                                 )
                             )
@@ -216,9 +217,9 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                     UQ112x112
                         .encode(
                             uint112(
-                                uint(
-                                    int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int(uint(reserve1)) - int(uint(_reserve1))) *
+                                uint256(
+                                    int256(uint256(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                        (((int256(uint256(reserve1)) - int256(uint256(_reserve1))) *
                                             int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                                 )
                             )
@@ -250,8 +251,8 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 totalFlow1,
         int96 flow0,
         int96 flow1
-    ) public view returns (uint balance0, uint balance1) {
-        (uint _twap0CumulativeLast, uint _twap1CumulativeLast) = _getUpdatedCumulatives(
+    ) public view returns (uint256 balance0, uint256 balance1) {
+        (uint256 _twap0CumulativeLast, uint256 _twap1CumulativeLast) = _getUpdatedCumulatives(
             time,
             _reserve0,
             _reserve1,
@@ -263,7 +264,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]));
     }
 
-    function getUserBalancesAtTime(address user, uint32 time) public view returns (uint balance0, uint balance1) {
+    function getUserBalancesAtTime(address user, uint32 time) public view returns (uint256 balance0, uint256 balance1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
@@ -281,7 +282,9 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         );
     }
 
-    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
+    function getRealTimeUserBalances(
+        address user
+    ) public view returns (uint256 balance0, uint256 balance1, uint256 time) {
         (balance0, balance1) = getUserBalancesAtTime(user, uint32(block.timestamp % 2 ** 32));
         time = block.timestamp;
     }
@@ -291,7 +294,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         require(success && (data.length == 0 || abi.decode(data, (bool))), "AqueductV1: TRANSFER_FAILED");
     }
 
-    constructor(ISuperfluid host) public {
+    constructor(ISuperfluid host) {
         assert(address(host) != address(0));
         factory = msg.sender;
         _host = host;
@@ -340,10 +343,10 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
                 uint112 swappedAmount0 = uint112(
-                    uint(
-                        int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                            (((int(uint(reserve0)) - int(uint(_reserve0))) * int112(10000 - LOWER_BOUND_FEE)) /
-                                int112(10000 - UPPER_BOUND_FEE))
+                    uint256(
+                        int256(uint256(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                            (((int256(uint256(reserve0)) - int256(uint256(_reserve0))) *
+                                int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                     )
                 );
                 uint112 swappedAmount1 = ((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
@@ -360,10 +363,10 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                     reserve0 -
                     _reserve0;
                 uint112 swappedAmount1 = uint112(
-                    uint(
-                        int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                            (((int(uint(reserve1)) - int(uint(_reserve1))) * int112(10000 - LOWER_BOUND_FEE)) /
-                                int112(10000 - UPPER_BOUND_FEE))
+                    uint256(
+                        int256(uint256(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                            (((int256(uint256(reserve1)) - int256(uint256(_reserve1))) *
+                                int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                     )
                 );
                 twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));

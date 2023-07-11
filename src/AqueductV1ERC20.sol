@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
-import "./interfaces/IAqueductV1ERC20.sol";
+import {IAqueductV1ERC20} from "./interfaces/IAqueductV1ERC20.sol";
 
 //solhint-disable var-name-mixedcase
 //solhint-disable reason-string

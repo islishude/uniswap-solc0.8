@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
-//solhint-disable-next-line compiler-version
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.12;
 
 interface IAqueductV1Factory {
     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);

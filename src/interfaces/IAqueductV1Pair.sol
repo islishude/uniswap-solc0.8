@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
-//solhint-disable-next-line compiler-version
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.12;
 
 //solhint-disable func-name-mixedcase
 
 import {ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
-
-import "./IAqueductV1ERC20.sol";
+import {IAqueductV1ERC20} from "./IAqueductV1ERC20.sol";
 
 interface IAqueductV1Pair is IAqueductV1ERC20 {
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
