@@ -57,7 +57,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     uint256 private unlocked = 1;
 
     modifier lock() {
-        require(unlocked == 1, "AqueductV1: LOCKED");
+        if (unlocked != 1) revert PAIR_LOCKED();
         unlocked = 0;
         _;
         unlocked = 1;
@@ -291,7 +291,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
 
     function _safeTransfer(address token, address to, uint256 value) private {
         (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "AqueductV1: TRANSFER_FAILED");
+        if (!success && (data.length != 0 || !abi.decode(data, (bool)))) revert PAIR_TRANSFER_FAILED();
     }
 
     constructor(ISuperfluid host) {
@@ -309,7 +309,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
 
     // called once by the factory at time of deployment
     function initialize(ISuperToken _token0, ISuperToken _token1) external override {
-        require(msg.sender == factory, "AqueductV1: FORBIDDEN"); // sufficient check
+        if (msg.sender != factory) revert PAIR_FORBIDDEN(); // sufficient check
         token0 = _token0;
         token1 = _token1;
     }
@@ -395,7 +395,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     }
 
     function _updateReserves(uint256 balance0, uint256 balance1, uint32 time) private {
-        require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, "AqueductV1: OVERFLOW");
+        if (balance0 > type(uint112).max || balance1 > type(uint112).max) revert PAIR_OVERFLOW();
 
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
@@ -447,7 +447,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         } else {
             liquidity = Math.min((amount0 * _totalSupply) / _reserve0, (amount1 * _totalSupply) / _reserve1);
         }
-        require(liquidity > 0, "AqueductV1: INSUFFICIENT_LIQUIDITY_MINTED");
+        if (liquidity <= 0) revert PAIR_INSUFFICIENT_LIQUIDITY_MINTED();
         _mint(to, liquidity);
 
         _updateReserves(balance0, balance1, time);
@@ -486,7 +486,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = (liquidity * balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = (liquidity * balance1) / _totalSupply; // using balances ensures pro-rata distribution
-        require(amount0 > 0 && amount1 > 0, "AqueductV1: INSUFFICIENT_LIQUIDITY_BURNED");
+        if (amount0 <= 0 || amount1 <= 0) revert PAIR_INSUFFICIENT_LIQUIDITY_BURNED();
         _burn(address(this), liquidity);
         _safeTransfer(_token0, to, amount0);
         _safeTransfer(_token1, to, amount1);
@@ -500,7 +500,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
 
     // this low-level function should be called from a contract which performs important safety checks
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {
-        require(amount0Out > 0 || amount1Out > 0, "AqueductV1: INSUFFICIENT_OUTPUT_AMOUNT");
+        if (amount0Out <= 0 && amount1Out <= 0) revert PAIR_INSUFFICIENT_OUTPUT_AMOUNT();
 
         uint256 amount0In;
         uint256 amount1In;
@@ -513,7 +513,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                 // scope for _token{0,1}, avoids stack too deep errors
                 address _token0 = address(token0);
                 address _token1 = address(token1);
-                require(to != _token0 && to != _token1, "AqueductV1: INVALID_TO");
+                if (to == _token0 || to == _token1) revert PAIR_INVALID_TO();
                 if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
                 if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
                 if (data.length > 0) IAqueductV1Callee(to).aqueductV1Call(msg.sender, amount0Out, amount1Out, data);
@@ -533,17 +533,17 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                 balance1 = IERC20(_token1).balanceOf(address(this)) - totalSwappedFunds1;
             }
 
-            require(amount0Out < _reserve0 && amount1Out < _reserve1, "AqueductV1: INSUFFICIENT_LIQUIDITY");
+            if (amount0Out >= _reserve0 || amount1Out >= _reserve1) revert PAIR_INSUFFICIENT_LIQUIDITY();
 
             // calculate input amounts (input agnostic)
             amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
             amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
-            require(amount0In > 0 || amount1In > 0, "AqueductV1: INSUFFICIENT_INPUT_AMOUNT");
+            if (amount0In <= 0 && amount1In <= 0) revert PAIR_INSUFFICIENT_INPUT_AMOUNT();
 
             // check K
             uint256 balance0Adjusted = balance0 * 1000 - amount0In * 3;
             uint256 balance1Adjusted = balance1 * 1000 - amount1In * 3;
-            require(balance0Adjusted * balance1Adjusted >= uint256(_reserve0) * _reserve1 * 1e6, "AqueductV1: K");
+            if (balance0Adjusted * balance1Adjusted < uint256(_reserve0) * _reserve1 * 1e6) revert PAIR_K();
 
             uint32 time = uint32(block.timestamp % 2 ** 32); // TODO: loaded twice, need to optimize
             _updateReserves(balance0, balance1, time);
@@ -575,10 +575,8 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     }
 
     function _handleCallback(ISuperToken _superToken, bytes calldata _agreementData, bytes calldata _cbdata) internal {
-        require(
-            address(_superToken) == address(token0) || address(_superToken) == address(token1),
-            "RedirectAll: token not in pool"
-        );
+        if (address(_superToken) != address(token0) && address(_superToken) != address(token1))
+            revert PAIR_TOKEN_NOT_IN_POOL();
 
         // decode previous net flowrates
         (uint112 totalFlow0, uint112 totalFlow1, int96 flow0, int96 flow1) = abi.decode(
@@ -709,7 +707,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     }
 
     modifier onlyHost() {
-        require(msg.sender == address(cfaV1.host), "RedirectAll: support only one host");
+        if (msg.sender != address(cfaV1.host)) revert PAIR_SUPPORT_ONLY_ONE_HOST();
         _;
     }
 }
