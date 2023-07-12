@@ -19,7 +19,7 @@ contract AqueductV1Router is IAqueductV1Router {
     address public immutable override WETH;
 
     modifier ensure(uint256 deadline) {
-        require(deadline >= block.timestamp, "AqueductV1Router: EXPIRED");
+        if (deadline < block.timestamp) revert ROUTER_EXPIRED();
         _;
     }
 
@@ -51,12 +51,12 @@ contract AqueductV1Router is IAqueductV1Router {
         } else {
             uint256 amountBOptimal = AqueductV1Library.quote(amountADesired, reserveA, reserveB);
             if (amountBOptimal <= amountBDesired) {
-                require(amountBOptimal >= amountBMin, "AqueductV1Router: INSUFFICIENT_B_AMOUNT");
+                if (amountBOptimal < amountBMin) revert ROUTER_INSUFFICIENT_B_AMOUNT();
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
                 uint256 amountAOptimal = AqueductV1Library.quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
-                require(amountAOptimal >= amountAMin, "AqueductV1Router: INSUFFICIENT_A_AMOUNT");
+                if (amountAOptimal < amountAMin) revert ROUTER_INSUFFICIENT_A_AMOUNT();
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
             }
         }
@@ -126,8 +126,8 @@ contract AqueductV1Router is IAqueductV1Router {
         (uint256 amount0, uint256 amount1) = IAqueductV1Pair(pair).burn(to);
         (address token0, ) = AqueductV1Library.sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
-        require(amountA >= amountAMin, "AqueductV1Router: INSUFFICIENT_A_AMOUNT");
-        require(amountB >= amountBMin, "AqueductV1Router: INSUFFICIENT_B_AMOUNT");
+        if (amountA < amountAMin) revert ROUTER_INSUFFICIENT_A_AMOUNT();
+        if (amountB < amountBMin) revert ROUTER_INSUFFICIENT_B_AMOUNT();
     }
 
     function removeLiquidityETH(
@@ -257,7 +257,7 @@ contract AqueductV1Router is IAqueductV1Router {
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = AqueductV1Library.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT");
+        if (amounts[amounts.length - 1] < amountOutMin) revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
@@ -275,7 +275,7 @@ contract AqueductV1Router is IAqueductV1Router {
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = AqueductV1Library.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, "AqueductV1Router: EXCESSIVE_INPUT_AMOUNT");
+        if (amounts[0] > amountInMax) revert ROUTER_EXCESSIVE_INPUT_AMOUNT();
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
@@ -291,9 +291,9 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external payable virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[0] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[0] != WETH) revert ROUTER_INVALID_PATH();
         amounts = AqueductV1Library.getAmountsOut(factory, msg.value, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT");
+        if (amounts[amounts.length - 1] < amountOutMin) revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(AqueductV1Library.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
@@ -306,9 +306,9 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[path.length - 1] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[path.length - 1] != WETH) revert ROUTER_INVALID_PATH();
         amounts = AqueductV1Library.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, "AqueductV1Router: EXCESSIVE_INPUT_AMOUNT");
+        if (amounts[0] > amountInMax) revert ROUTER_EXCESSIVE_INPUT_AMOUNT();
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
@@ -327,9 +327,9 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[path.length - 1] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[path.length - 1] != WETH) revert ROUTER_INVALID_PATH();
         amounts = AqueductV1Library.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT");
+        if (amounts[amounts.length - 1] < amountOutMin) revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
@@ -347,9 +347,9 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external payable virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[0] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[0] != WETH) revert ROUTER_INVALID_PATH();
         amounts = AqueductV1Library.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= msg.value, "AqueductV1Router: EXCESSIVE_INPUT_AMOUNT");
+        if (amounts[0] > msg.value) revert ROUTER_EXCESSIVE_INPUT_AMOUNT();
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(AqueductV1Library.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
@@ -398,10 +398,8 @@ contract AqueductV1Router is IAqueductV1Router {
         );
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
-        require(
-            IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
-            "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT"
-        );
+        if (IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore < amountOutMin)
+            revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
     }
 
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
@@ -410,16 +408,14 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external payable virtual override ensure(deadline) {
-        require(path[0] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[0] != WETH) revert ROUTER_INVALID_PATH();
         uint256 amountIn = msg.value;
         IWETH(WETH).deposit{value: amountIn}();
         assert(IWETH(WETH).transfer(AqueductV1Library.pairFor(factory, path[0], path[1]), amountIn));
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
-        require(
-            IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
-            "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT"
-        );
+        if (IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore < amountOutMin)
+            revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
     }
 
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
@@ -429,7 +425,7 @@ contract AqueductV1Router is IAqueductV1Router {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) {
-        require(path[path.length - 1] == WETH, "AqueductV1Router: INVALID_PATH");
+        if (path[path.length - 1] != WETH) revert ROUTER_INVALID_PATH();
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
@@ -438,7 +434,7 @@ contract AqueductV1Router is IAqueductV1Router {
         );
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint256 amountOut = IERC20(WETH).balanceOf(address(this));
-        require(amountOut >= amountOutMin, "AqueductV1Router: INSUFFICIENT_OUTPUT_AMOUNT");
+        if (amountOut < amountOutMin) revert ROUTER_INSUFFICIENT_OUTPUT_AMOUNT();
         IWETH(WETH).withdraw(amountOut);
         TransferHelper.safeTransferETH(to, amountOut);
     }
