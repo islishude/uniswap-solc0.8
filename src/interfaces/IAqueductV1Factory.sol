@@ -4,6 +4,11 @@ pragma solidity ^0.8.12;
 interface IAqueductV1Factory {
     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);
 
+    error FACTORY_IDENTICAL_ADDRESSES();
+    error FACTORY_ZERO_ADDRESS();
+    error FACTORY_PAIR_EXISTS();
+    error FACTORY_FORBIDDEN();
+
     function feeTo() external view returns (address);
 
     function feeToSetter() external view returns (address);
