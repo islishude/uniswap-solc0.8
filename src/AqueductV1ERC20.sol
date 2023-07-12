@@ -84,7 +84,7 @@ contract AqueductV1ERC20 is IAqueductV1ERC20 {
         bytes32 s
     ) external override {
         //solhint-disable-next-line not-rely-on-time
-        require(deadline >= block.timestamp, "AqueductV1: EXPIRED");
+        if (deadline < block.timestamp) revert ERC20_EXPIRED();
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -93,7 +93,7 @@ contract AqueductV1ERC20 is IAqueductV1ERC20 {
             )
         );
         address recoveredAddress = ecrecover(digest, v, r, s);
-        require(recoveredAddress != address(0) && recoveredAddress == owner, "AqueductV1: INVALID_SIGNATURE");
+        if (recoveredAddress == address(0) || recoveredAddress != owner) revert ERC20_INVALID_SIGNATURE();
         _approve(owner, spender, value);
     }
 }

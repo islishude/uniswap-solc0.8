@@ -6,11 +6,19 @@ pragma solidity ^0.8.12;
 import {IAqueductV1Pair} from "../interfaces/IAqueductV1Pair.sol";
 
 library AqueductV1Library {
+    error LIBRARY_IDENTICAL_ADDRESSES();
+    error LIBRARY_ZERO_ADDRESS();
+    error LIBRARY_INSUFFICIENT_AMOUNT();
+    error LIBRARY_INSUFFICIENT_LIQUIDITY();
+    error LIBRARY_INSUFFICIENT_INPUT_AMOUNT();
+    error LIBRARY_INSUFFICIENT_OUTPUT_AMOUNT();
+    error LIBRARY_INVALID_PATH();
+
     // returns sorted token addresses, used to handle return values from pairs sorted in this order
     function sortTokens(address tokenA, address tokenB) internal pure returns (address token0, address token1) {
-        require(tokenA != tokenB, "AqueductV1Library: IDENTICAL_ADDRESSES");
+        if (tokenA == tokenB) revert LIBRARY_IDENTICAL_ADDRESSES();
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "AqueductV1Library: ZERO_ADDRESS");
+        if (token0 == address(0)) revert LIBRARY_ZERO_ADDRESS();
     }
 
     // calculates the CREATE2 address for a pair without making any external calls
@@ -45,8 +53,8 @@ library AqueductV1Library {
 
     // given some amount of an asset and pair reserves, returns an equivalent amount of the other asset
     function quote(uint256 amountA, uint256 reserveA, uint256 reserveB) internal pure returns (uint256 amountB) {
-        require(amountA > 0, "AqueductV1Library: INSUFFICIENT_AMOUNT");
-        require(reserveA > 0 && reserveB > 0, "AqueductV1Library: INSUFFICIENT_LIQUIDITY");
+        if (amountA <= 0) revert LIBRARY_INSUFFICIENT_AMOUNT();
+        if (!(reserveA > 0 && reserveB > 0)) revert LIBRARY_INSUFFICIENT_LIQUIDITY();
         amountB = (amountA * reserveB) / reserveA;
     }
 
@@ -56,8 +64,8 @@ library AqueductV1Library {
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
-        require(amountIn > 0, "AqueductV1Library: INSUFFICIENT_INPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "AqueductV1Library: INSUFFICIENT_LIQUIDITY");
+        if (amountIn <= 0) revert LIBRARY_INSUFFICIENT_INPUT_AMOUNT();
+        if (reserveIn <= 0 || reserveOut <= 0) revert LIBRARY_INSUFFICIENT_LIQUIDITY();
         uint256 amountInWithFee = amountIn * 997;
         uint256 numerator = amountInWithFee * reserveOut;
         uint256 denominator = reserveIn * 1000 + amountInWithFee;
@@ -70,8 +78,8 @@ library AqueductV1Library {
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountIn) {
-        require(amountOut > 0, "AqueductV1Library: INSUFFICIENT_OUTPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "AqueductV1Library: INSUFFICIENT_LIQUIDITY");
+        if (amountOut <= 0) revert LIBRARY_INSUFFICIENT_OUTPUT_AMOUNT();
+        if (reserveIn <= 0 || reserveOut <= 0) revert LIBRARY_INSUFFICIENT_LIQUIDITY();
         uint256 numerator = reserveIn * amountOut * 1000;
         uint256 denominator = (reserveOut - amountOut) * 997;
         amountIn = numerator / denominator + 1;
@@ -83,7 +91,7 @@ library AqueductV1Library {
         uint256 amountIn,
         address[] memory path
     ) internal view returns (uint256[] memory amounts) {
-        require(path.length >= 2, "AqueductV1Library: INVALID_PATH");
+        if (path.length < 2) revert LIBRARY_INVALID_PATH();
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
         for (uint256 i; i < path.length - 1; i++) {
@@ -98,7 +106,7 @@ library AqueductV1Library {
         uint256 amountOut,
         address[] memory path
     ) internal view returns (uint256[] memory amounts) {
-        require(path.length >= 2, "AqueductV1Library: INVALID_PATH");
+        if (path.length < 2) revert LIBRARY_INVALID_PATH();
         amounts = new uint256[](path.length);
         amounts[amounts.length - 1] = amountOut;
         for (uint256 i = path.length - 1; i > 0; i--) {

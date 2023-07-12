@@ -6,6 +6,9 @@ interface IAqueductV1ERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Transfer(address indexed from, address indexed to, uint256 value);
 
+    error ERC20_EXPIRED();
+    error ERC20_INVALID_SIGNATURE();
+
     function name() external pure returns (string memory);
 
     function symbol() external pure returns (string memory);
