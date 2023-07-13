@@ -18,6 +18,10 @@ import {IAqueductV1Callee} from "./interfaces/IAqueductV1Callee.sol";
 //solhint-disable avoid-low-level-calls
 //solhint-disable not-rely-on-time
 
+/**
+ * @title AqueductV1Pair contract
+ * @author Aqueduct
+ */
 contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     using UQ112x112 for uint224;
 
@@ -55,13 +59,6 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
 
     uint256 private unlocked = 1;
 
-    modifier lock() {
-        if (unlocked != 1) revert PAIR_LOCKED();
-        unlocked = 0;
-        _;
-        unlocked = 1;
-    }
-
     constructor(ISuperfluid host) {
         assert(address(host) != address(0));
         factory = msg.sender;
@@ -75,18 +72,42 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         host.registerApp(configWord);
     }
 
+    /**
+     * @notice Initializes the contract with two super tokens. Called only once by the factory at the time of deployment.
+     * @dev This function can only be called by the factory. If called by any other address, it will revert with "PAIR_FORBIDDEN".
+     * @param _token0 The first token in the pair.
+     * @param _token1 The second token in the pair.
+     */
     function initialize(ISuperToken _token0, ISuperToken _token1) external override {
         if (msg.sender != factory) revert PAIR_FORBIDDEN(); // sufficient check
         token0 = _token0;
         token1 = _token1;
     }
 
+    /**
+     * @notice Fetches the real-time incoming flow rates for both tokens and the current timestamp.
+     * @dev This function calls the `getNetFlow` method from `cfa` contract for each token and gets the current block timestamp.
+     * @return totalFlow0 The total incoming flow rate for `token0`.
+     * @return totalFlow1 The total incoming flow rate for `token1`.
+     * @return time The current block timestamp modulo 2**32.
+     */
     function getRealTimeIncomingFlowRates() public view returns (uint112 totalFlow0, uint112 totalFlow1, uint32 time) {
         totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         time = uint32(block.timestamp % 2 ** 32);
     }
 
+    /**************************************************************************
+     * Reserves Functions & Internal Reserves Helper Functions
+     *************************************************************************/
+
+    /**
+     * @notice Fetches the current reserves and the last recorded block timestamp.
+     * @dev This function returns the current values of `reserve0`, `reserve1`, and `blockTimestampLast`.
+     * @return _reserve0 The current reserve of `token0`.
+     * @return _reserve1 The current reserve of `token1`.
+     * @return _blockTimestampLast The timestamp of the last block when reserves were updated.
+     */
     function getReserves()
         public
         view
@@ -98,6 +119,21 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         _blockTimestampLast = blockTimestampLast;
     }
 
+    /**
+     * @notice Calculates the reserves of two tokens at a specific timestamp taking fees into account.
+     * @dev This function calculates the reserves of `token0` and `token1` at a specific time,
+     *      based on the total flow of each token and the elapsed time since the last recorded block timestamp.
+     *      If both tokens have a positive flow, it uses `_calculateReservesBothFlows` to compute the reserves.
+     *      If only `token0` has a positive flow, it uses `_calculateReservesFlow0`.
+     *      If only `token1` has a positive flow, it uses `_calculateReservesFlow1`.
+     *      If neither token has a positive flow or no time has elapsed, it retrieves the static reserves by calling `getReserves`.
+     *      Note that the formula from Paradigm for TWAMM has been commented out due to precision issues and high gas consumption.
+     * @param time The timestamp at which to calculate the reserves.
+     * @param totalFlow0 The total incoming flow rate for `token0`.
+     * @param totalFlow1 The total incoming flow rate for `token1`.
+     * @return _reserve0 The calculated reserve for `token0`.
+     * @return _reserve1 The calculated reserve for `token1`.
+     */
     function _getReservesAtTimeNoFees(
         uint32 time,
         uint112 totalFlow0,
@@ -132,12 +168,32 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         }
     }
 
-    // Common function to calculate total amount after fee
-    function _calculateTotalAmount(uint112 totalFlow, uint32 timeElapsed) internal pure returns (uint112) {
-        return (totalFlow * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
+    /**
+     * @notice Calculates the reserve amount since the last update time after applying fees.
+     * @dev This function uses the total flow, elapsed time and the UPPER_BOUND_FEE to calculate the updated reserve amount.
+     * @param totalFlow The total flow of the token.
+     * @param timeElapsed The time elapsed since the last update.
+     * @return reserveAmountSinceTime calculated reserve amount after applying fees.
+     */
+    function _calculateReserveAmountSinceTime(
+        uint112 totalFlow,
+        uint32 timeElapsed
+    ) internal pure returns (uint112 reserveAmountSinceTime) {
+        reserveAmountSinceTime = (totalFlow * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
     }
 
-    // Function to handle reserves calculation in case of both flows
+    /**
+     * @notice Calculates reserves when both flows exist.
+     * @dev Reserves are calculated based on the invariant (_kLast) and updated flows.
+     * @param _kLast The previous product of the reserves (reserve0 * reserve1).
+     * @param totalFlow0 Total flow of token0.
+     * @param totalFlow1 Total flow of token1.
+     * @param timeElapsed Time elapsed since the last update.
+     * @param reserve0 The current reserve of token0.
+     * @param reserve1 The current reserve of token1.
+     * @return _reserve0 The calculated reserve of token0.
+     * @return _reserve1 The calculated reserve of token1.
+     */
     function _calculateReservesBothFlows(
         uint256 _kLast,
         uint112 totalFlow0,
@@ -147,14 +203,27 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 reserve1
     ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
         // use approximation:
-        uint112 totalAmount0 = _calculateTotalAmount(totalFlow0, timeElapsed); // apply upper bound fee to input amounts
-        uint112 totalAmount1 = _calculateTotalAmount(totalFlow1, timeElapsed);
+        uint112 reserveAmountSinceTime0 = _calculateReserveAmountSinceTime(totalFlow0, timeElapsed); // apply upper bound fee to input amounts
+        uint112 reserveAmountSinceTime1 = _calculateReserveAmountSinceTime(totalFlow1, timeElapsed);
         // not sure if these uint256->uint112 downcasts are safe:
-        _reserve0 = uint112(Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1)));
+        _reserve0 = uint112(
+            Math.sqrt((_kLast * (reserve0 + reserveAmountSinceTime0)) / (reserve1 + reserveAmountSinceTime1))
+        );
         _reserve1 = uint112(_kLast / _reserve0);
     }
 
-    // Function to handle reserves calculation in case of flow0 only
+    /**
+     * @notice Calculates reserves when only flow0 exists.
+     * @dev Uses invariant x * y = k to calculate the reserves when only flow0 is active.
+     *      The total amount of token0 is calculated after fee and added to the current reserves.
+     *      Downcasting uint256 to uint112 should be safe in this context.
+     * @param _kLast The previous product of the reserves (reserve0 * reserve1).
+     * @param totalFlow0 Total flow of token0.
+     * @param timeElapsed Time elapsed since the last update.
+     * @param reserve0 The current reserve of token0.
+     * @return _reserve0 The calculated reserve of token0.
+     * @return _reserve1 The calculated reserve of token1.
+     */
     function _calculateReservesFlow0(
         uint256 _kLast,
         uint112 totalFlow0,
@@ -162,12 +231,23 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 reserve0
     ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
         // use x * y = k
-        uint112 totalAmount0 = _calculateTotalAmount(totalFlow0, timeElapsed);
-        _reserve0 = reserve0 + totalAmount0;
+        uint112 reserveAmountSinceTime0 = _calculateReserveAmountSinceTime(totalFlow0, timeElapsed);
+        _reserve0 = reserve0 + reserveAmountSinceTime0;
         _reserve1 = uint112(_kLast / _reserve0); // should be a safe downcast
     }
 
-    // Function to handle reserves calculation in case of flow1 only
+    /**
+     * @notice Calculates reserves when only flow1 exists.
+     * @dev Uses invariant x * y = k to calculate the reserves when only flow1 is active.
+     *      The total amount of token1 is calculated after fee and added to the current reserves.
+     *      Downcasting uint256 to uint112 should be safe in this context.
+     * @param _kLast The previous product of the reserves (reserve0 * reserve1).
+     * @param totalFlow1 Total flow of token1.
+     * @param timeElapsed Time elapsed since the last update.
+     * @param reserve1 The current reserve of token1.
+     * @return _reserve0 The calculated reserve of token0.
+     * @return _reserve1 The calculated reserve of token1.
+     */
     function _calculateReservesFlow1(
         uint256 _kLast,
         uint112 totalFlow1,
@@ -175,11 +255,21 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint112 reserve1
     ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
         // use x * y = k
-        uint112 totalAmount1 = _calculateTotalAmount(totalFlow1, timeElapsed);
-        _reserve1 = reserve1 + totalAmount1;
+        uint112 reserveAmountSinceTime1 = _calculateReserveAmountSinceTime(totalFlow1, timeElapsed);
+        _reserve1 = reserve1 + reserveAmountSinceTime1;
         _reserve0 = uint112(_kLast / _reserve1); // should be a safe downcast
     }
 
+    /**
+     * @notice Calculates the reserves at a specified timestamp.
+     * @dev This function uses total flows and fees to calculate the reserves at a given timestamp.
+     *      It first fetches the reserves without fees and then applies the necessary fees based on total flows.
+     * @param time The timestamp at which the reserves are to be calculated.
+     * @param totalFlow0 The total flow of token0.
+     * @param totalFlow1 The total flow of token1.
+     * @return _reserve0 The calculated reserve of token0 at the specified time.
+     * @return _reserve1 The calculated reserve of token1 at the specified time.
+     */
     function _getReservesAtTime(
         uint32 time,
         uint112 totalFlow0,
@@ -212,34 +302,80 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         }
     }
 
-    function _calculateFees(uint112 totalFlow, uint32 timeElapsed, uint112 fee) internal pure returns (uint112) {
-        return (totalFlow * timeElapsed * fee) / 10000;
+    /**
+     * @notice Calculates the fees accumulated over a period of time.
+     * @dev This function calculates the fees accumulated on a total flow over the time elasped.
+     * @param totalFlow The total flow of the token.
+     * @param timeElapsed The time period over which the fees are to be calculated.
+     * @param fee The fee percentage.
+     * @return fees calculated fees.
+     */
+    function _calculateFees(uint112 totalFlow, uint32 timeElapsed, uint112 fee) internal pure returns (uint112 fees) {
+        fees = (totalFlow * timeElapsed * fee) / 10000;
     }
 
+    /**
+     * @notice Calculates the fee on the difference of reserves.
+     * @dev This function calculates the fee on the difference of the reserve and the updated reserve.
+     * @param reserve The current reserve.
+     * @param _reserve The updated reserve.
+     * @param lowerBoundFee The lower bound fee percentage.
+     * @param upperBoundFee The upper bound fee percentage.
+     * @return fees calculated fee.
+     */
     function _calculateReserveDiffFee(
         uint112 reserve,
         uint112 _reserve,
         uint112 lowerBoundFee,
         uint112 upperBoundFee
-    ) internal pure returns (uint112) {
+    ) internal pure returns (uint112 fees) {
         int256 reserveDiff = int256(uint256(reserve)) - int256(uint256(_reserve));
-        return
-            uint112(
-                uint256((reserveDiff - ((reserveDiff * int112(10000 - lowerBoundFee)) / int112(10000 - upperBoundFee))))
-            );
+        fees = uint112(
+            uint256((reserveDiff - ((reserveDiff * int112(10000 - lowerBoundFee)) / int112(10000 - upperBoundFee))))
+        );
     }
 
+    /**
+     * @notice Fetches the reserves at a given timestamp. Intended to be used externally
+     * @dev This function calculates the reserves of both tokens at a given time by getting the net flow of both tokens.
+     * @param time The timestamp at which the reserves are to be fetched.
+     * @return _reserve0 The reserve of token0 at the specified time.
+     * @return _reserve1 The reserve of token1 at the specified time.
+     */
     function getReservesAtTime(uint32 time) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
     }
 
+    /**
+     * @notice Fetches the real-time reserves.
+     * @dev This function fetches the reserves at the current block timestamp.
+     * @return _reserve0 The real-time reserve of token0.
+     * @return _reserve1 The real-time reserve of token1.
+     * @return time The current block timestamp.
+     */
     function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint256 time) {
         (_reserve0, _reserve1) = getReservesAtTime(uint32(block.timestamp % 2 ** 32));
         time = block.timestamp;
     }
 
+    /**************************************************************************
+     * Cumulatives Functions & Internal Cumulatives Helper Functions
+     *************************************************************************/
+
+    /**
+     * @notice Calculates the updated time-weighted average price (TWAP) cumulative values for `token0` and
+     * `token1` given the reserves, net flows and a specific time.
+     * @dev The function determines the flow direction and calls the corresponding helper function to calculate the TWAP.
+     * @param time The timestamp at which to get the updated TWAP.
+     * @param _reserve0 The reserve amount of token0.
+     * @param _reserve1 The reserve amount of token1.
+     * @param totalFlow0 The total flow of token0.
+     * @param totalFlow1 The total flow of token1.
+     * @return _twap0CumulativeLast The calculated cumulative TWAP of token0.
+     * @return _twap1CumulativeLast The calculated cumulative TWAP of token1.
+     */
     function _getUpdatedCumulatives(
         uint32 time,
         uint112 _reserve0,
@@ -296,56 +432,84 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         }
     }
 
+    /**
+     * @notice Helper function to calculate TWAP considering reserves and fees.
+     * @dev It calculates TWAP by encoding the total flow, adjusted for fees and reserves changes, and then dividing it by the total flow of the opposite token.
+     * @param totalFlow The total flow of the token for which the TWAP is being calculated.
+     * @param timeElapsed The time duration for which the TWAP is being calculated.
+     * @param oppositeTotalFlow The total flow of the opposite token.
+     * @param reserve The stored reserve of the token.
+     * @param _reserve The more recent reserve of the token.
+     * @return twap calculated TWAP for the given token.
+     */
     function _calculateTwapWithReservesAndFees(
         uint112 totalFlow,
         uint32 timeElapsed,
         uint112 oppositeTotalFlow,
         uint112 reserve,
         uint112 _reserve
-    ) internal pure returns (uint256) {
-        return
-            uint256(
-                UQ112x112
-                    .encode(
-                        uint112(
-                            uint256(
-                                int256(uint256(totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                    (((int256(uint256(reserve)) - int256(uint256(_reserve))) *
-                                        int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
-                            )
+    ) internal pure returns (uint256 twap) {
+        twap = uint256(
+            UQ112x112
+                .encode(
+                    uint112(
+                        uint256(
+                            int256(uint256(totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                (((int256(uint256(reserve)) - int256(uint256(_reserve))) *
+                                    int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                         )
                     )
-                    .uqdiv(oppositeTotalFlow)
-            );
+                )
+                .uqdiv(oppositeTotalFlow)
+        );
     }
 
+    /**
+     * @notice Helper function to calculate TWAP considering reserves.
+     * @dev It calculates TWAP by encoding the total flow and reserves changes, and then dividing it by the total
+     * flow of the opposite token. There is some adjustment for the lower bound fee.
+     * @param totalFlow The total flow of the token for which the TWAP is being calculated.
+     * @param timeElapsed The time duration for which the TWAP is being calculated.
+     * @param oppositeTotalFlow The total flow of the opposite token.
+     * @param reserve The stored reserve of the token.
+     * @param _reserve The more recent reserve of the token.
+     * @return twap calculated TWAP for the given token.
+     */
     function _calculateTwapWithReserves(
         uint112 totalFlow,
         uint32 timeElapsed,
         uint112 oppositeTotalFlow,
         uint112 reserve,
         uint112 _reserve
-    ) internal pure returns (uint256) {
-        return
-            uint256(
-                UQ112x112
-                    .encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + reserve - _reserve)
-                    .uqdiv(oppositeTotalFlow)
-            );
+    ) internal pure returns (uint256 twap) {
+        twap = uint256(
+            UQ112x112
+                .encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + reserve - _reserve)
+                .uqdiv(oppositeTotalFlow)
+        );
     }
 
+    /**
+     * @notice Helper function to calculate TWAP.
+     * @dev It calculates TWAP by encoding the total flow and then dividing it by the total flow of the opposite token.
+     * @param totalFlow The total flow of the token for which the TWAP is being calculated.
+     * @param timeElapsed The time duration for which the TWAP is being calculated.
+     * @param oppositeTotalFlow The total flow of the opposite token.
+     * @return twap calculated TWAP for the given token.
+     */
     function _calculateTwap(
         uint112 totalFlow,
         uint32 timeElapsed,
         uint112 oppositeTotalFlow
-    ) internal pure returns (uint256) {
-        return
-            uint256(
-                UQ112x112.encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000)).uqdiv(
-                    oppositeTotalFlow
-                )
-            );
+    ) internal pure returns (uint256 twap) {
+        twap = uint256(
+            UQ112x112.encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000)).uqdiv(oppositeTotalFlow)
+        );
     }
+
+    /**************************************************************************
+     * Balance Functions
+     *************************************************************************/
 
     function _getUserBalancesAtTime(
         address user,
@@ -394,10 +558,9 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         time = block.timestamp;
     }
 
-    function _safeTransfer(address token, address to, uint256 value) private {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, value));
-        if (!success && (data.length != 0 || !abi.decode(data, (bool)))) revert PAIR_TRANSFER_FAILED();
-    }
+    /**************************************************************************
+     * Accumulator Functions & Internal Accumulator Helper Functions
+     *************************************************************************/
 
     // update reserves and, on the first call per block, price accumulators
     function _updateAccumulators(
@@ -477,6 +640,15 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
             twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
             totalSwappedFunds0 += swappedAmount0;
         }
+    }
+
+    /**************************************************************************
+     * AMM "actions" Functions & Internal AMM "actions" Helper Functions
+     *************************************************************************/
+
+    function _safeTransfer(address token, address to, uint256 value) private {
+        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, value));
+        if (!success && (data.length != 0 || !abi.decode(data, (bool)))) revert PAIR_TRANSFER_FAILED();
     }
 
     function _updateReserves(uint256 balance0, uint256 balance1, uint32 time) private {
@@ -659,6 +831,10 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         _updateReserves(balance0, balance1, time);
     }
 
+    /**************************************************************************
+     * Callback Functions and Superfluid Hooks
+     *************************************************************************/
+
     function _handleCallback(ISuperToken _superToken, bytes calldata _agreementData, bytes calldata _cbdata) internal {
         if (address(_superToken) != address(token0) && address(_superToken) != address(token1))
             revert PAIR_TOKEN_NOT_IN_POOL();
@@ -789,6 +965,17 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     ) external override onlyHost returns (bytes memory newCtx) {
         _handleCallback(_superToken, _agreementData, _cbdata);
         newCtx = _ctx;
+    }
+
+    /**************************************************************************
+     * Modifiers
+     *************************************************************************/
+
+    modifier lock() {
+        if (unlocked != 1) revert PAIR_LOCKED();
+        unlocked = 0;
+        _;
+        unlocked = 1;
     }
 
     modifier onlyHost() {
