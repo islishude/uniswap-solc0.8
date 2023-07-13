@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.12;
 
 import "forge-std/Test.sol";
-import {UniswapV2Pair} from "../../src/UniswapV2Pair.sol";
-import {UniswapV2Factory} from "../../src/UniswapV2Factory.sol";
+import {AqueductV1Pair} from "../../src/AqueductV1Pair.sol";
+import {AqueductV1Factory} from "../../src/AqueductV1Factory.sol";
 
 import {ISuperfluid} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
@@ -15,9 +16,9 @@ import {TestGovernance} from "@superfluid-finance/ethereum-contracts/contracts/u
 import {TestToken} from "@superfluid-finance/ethereum-contracts/contracts/utils/TestToken.sol";
 import {SuperToken} from "@superfluid-finance/ethereum-contracts/contracts/superfluid/SuperToken.sol";
 
-contract UniswapV2PairTest is Test {
-    UniswapV2Pair public uniswapV2Pair;
-    UniswapV2Factory public uniswapV2Factory;
+contract AqueductV1PairTest is Test {
+    AqueductV1Pair public aqueductV1Pair;
+    AqueductV1Factory public aqueductV1Factory;
     SuperfluidFrameworkDeployer.Framework internal sf;
     SuperfluidFrameworkDeployer internal deployer;
 
@@ -82,8 +83,8 @@ contract UniswapV2PairTest is Test {
 
         setUpTokens();
 
-        uniswapV2Factory = new UniswapV2Factory(admin, sf.host);
-        uniswapV2Pair = UniswapV2Pair(uniswapV2Factory.createPair(address(superTokenA), address(superTokenB)));
+        aqueductV1Factory = new AqueductV1Factory(admin, sf.host);
+        aqueductV1Pair = AqueductV1Pair(aqueductV1Factory.createPair(address(superTokenA), address(superTokenB)));
     }
 
     function test_integration_provideLiquidity() public {
@@ -91,21 +92,21 @@ contract UniswapV2PairTest is Test {
         uint256 expectedLiquidity = INIT_SUPER_TOKEN_BALANCE;
 
         vm.startPrank(admin);
-        superTokenA.transfer(address(uniswapV2Pair), INIT_SUPER_TOKEN_BALANCE);
-        superTokenB.transfer(address(uniswapV2Pair), INIT_SUPER_TOKEN_BALANCE);
+        superTokenA.transfer(address(aqueductV1Pair), INIT_SUPER_TOKEN_BALANCE);
+        superTokenB.transfer(address(aqueductV1Pair), INIT_SUPER_TOKEN_BALANCE);
         vm.stopPrank();
 
         // Act
-        uniswapV2Pair.mint(admin);
+        aqueductV1Pair.mint(admin);
 
         // Assert
-        uint256 totalSupply = uniswapV2Pair.totalSupply();
+        uint256 totalSupply = aqueductV1Pair.totalSupply();
         assertEq(totalSupply, expectedLiquidity);
     }
 
     function test_getReserves_ReturnsReserves() public {
         // Arrange & Act
-        (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) = uniswapV2Pair.getReserves();
+        (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) = aqueductV1Pair.getReserves();
 
         // Assert
         assertEq(_reserve0, 0);

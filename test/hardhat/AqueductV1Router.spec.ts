@@ -3,10 +3,10 @@ import { expect } from "chai";
 import { BigNumber, Contract } from "ethers";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { expandTo18Decimals, MINIMUM_LIQUIDITY, UniswapVersion } from "./shared/utilities";
-import { UniswapV2Pair } from "../../typechain-types";
+import { expandTo18Decimals, MINIMUM_LIQUIDITY, AqueductVersion } from "./shared/utilities";
+import { AqueductV1Pair } from "../../typechain-types";
 
-describe.skip("UniswapV2Router", () => {
+describe.skip("AqueductV1Router", () => {
     async function v2Fixture() {
         const [wallet] = await ethers.getSigners();
         const token = await ethers.getContractFactory("ERC20");
@@ -22,7 +22,7 @@ describe.skip("UniswapV2Router", () => {
         const WETHPartner = await erc20.deploy(expandTo18Decimals(10000));
 
         // deploy V2
-        const v2factory = await ethers.getContractFactory("UniswapV2Factory");
+        const v2factory = await ethers.getContractFactory("AqueductV1Factory");
         const factoryV2 = await v2factory.deploy(wallet.address, "");
 
         const routerEmit = await ethers.getContractFactory("RouterEventEmitter");
@@ -30,14 +30,14 @@ describe.skip("UniswapV2Router", () => {
         const RouterEmit = await routerEmit.deploy();
 
         // deploy routers
-        const router = await ethers.getContractFactory("UniswapV2Router");
+        const router = await ethers.getContractFactory("AqueductV1Router");
         const router02 = await router.deploy(factoryV2.address, WETH.address);
 
         // initialize V2
         await factoryV2.createPair(tokenA.address, tokenB.address);
         const pairAddress = await factoryV2.getPair(tokenA.address, tokenB.address);
-        const pairFactory = await ethers.getContractFactory("UniswapV2Pair");
-        const pair = new Contract(pairAddress, pairFactory.interface, wallet) as UniswapV2Pair;
+        const pairFactory = await ethers.getContractFactory("AqueductV1Pair");
+        const pair = new Contract(pairAddress, pairFactory.interface, wallet) as AqueductV1Pair;
 
         const token0Address = await pair.token0();
         const token0 = tokenA.address === token0Address ? tokenA : tokenB;
@@ -71,13 +71,13 @@ describe.skip("UniswapV2Router", () => {
             BigNumber.from(1)
         );
         await expect(router.quote(BigNumber.from(0), BigNumber.from(100), BigNumber.from(200))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_AMOUNT"
+            "AqueductV1Library: INSUFFICIENT_AMOUNT"
         );
         await expect(router.quote(BigNumber.from(1), BigNumber.from(0), BigNumber.from(200))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
         await expect(router.quote(BigNumber.from(1), BigNumber.from(100), BigNumber.from(0))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
     });
 
@@ -89,12 +89,12 @@ describe.skip("UniswapV2Router", () => {
         );
         await expect(
             router.getAmountOut(BigNumber.from(0), BigNumber.from(100), BigNumber.from(100))
-        ).to.be.revertedWith("UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT");
+        ).to.be.revertedWith("AqueductV1Library: INSUFFICIENT_INPUT_AMOUNT");
         await expect(router.getAmountOut(BigNumber.from(2), BigNumber.from(0), BigNumber.from(100))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
         await expect(router.getAmountOut(BigNumber.from(2), BigNumber.from(100), BigNumber.from(0))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
     });
 
@@ -106,12 +106,12 @@ describe.skip("UniswapV2Router", () => {
         );
         await expect(
             router.getAmountIn(BigNumber.from(0), BigNumber.from(100), BigNumber.from(100))
-        ).to.be.revertedWith("UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT");
+        ).to.be.revertedWith("AqueductV1Library: INSUFFICIENT_OUTPUT_AMOUNT");
         await expect(router.getAmountIn(BigNumber.from(1), BigNumber.from(0), BigNumber.from(100))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
         await expect(router.getAmountIn(BigNumber.from(1), BigNumber.from(100), BigNumber.from(0))).to.be.revertedWith(
-            "UniswapV2Library: INSUFFICIENT_LIQUIDITY"
+            "AqueductV1Library: INSUFFICIENT_LIQUIDITY"
         );
     });
 
@@ -132,7 +132,7 @@ describe.skip("UniswapV2Router", () => {
         );
 
         await expect(router.getAmountsOut(BigNumber.from(2), [token0.address])).to.be.revertedWith(
-            "UniswapV2Library: INVALID_PATH"
+            "AqueductV1Library: INVALID_PATH"
         );
         const path = [token0.address, token1.address];
         expect(await router.getAmountsOut(BigNumber.from(2), path)).to.deep.eq([BigNumber.from(2), BigNumber.from(1)]);
@@ -155,7 +155,7 @@ describe.skip("UniswapV2Router", () => {
         );
 
         await expect(router.getAmountsIn(BigNumber.from(1), [token0.address])).to.be.revertedWith(
-            "UniswapV2Library: INVALID_PATH"
+            "AqueductV1Library: INVALID_PATH"
         );
         const path = [token0.address, token1.address];
         expect(await router.getAmountsIn(BigNumber.from(1), path)).to.deep.eq([BigNumber.from(2), BigNumber.from(1)]);
@@ -317,7 +317,7 @@ describe.skip("UniswapV2Router", () => {
             // "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
             {
                 name: tokenName,
-                version: UniswapVersion,
+                version: AqueductVersion,
                 chainId: chainId,
                 verifyingContract: pair.address,
             },
@@ -378,7 +378,7 @@ describe.skip("UniswapV2Router", () => {
             // "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
             {
                 name: tokenName,
-                version: UniswapVersion,
+                version: AqueductVersion,
                 chainId: chainId,
                 verifyingContract: wethPair.address,
             },

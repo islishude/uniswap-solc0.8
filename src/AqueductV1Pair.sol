@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
 import {ISuperfluid, ISuperToken, ISuperfluidToken, ISuperApp, ISuperAgreement, SuperAppDefinitions} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
@@ -7,20 +6,20 @@ import {SuperAppBase} from "@superfluid-finance/ethereum-contracts/contracts/app
 import {CFAv1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/CFAv1Library.sol";
 import {IConstantFlowAgreementV1} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol";
 
-import "./interfaces/IUniswapV2Pair.sol";
-import "./UniswapV2ERC20.sol";
-import "./libraries/Math.sol";
-import "./libraries/UQ112x112.sol";
-import "./interfaces/IERC20.sol";
-import "./interfaces/IUniswapV2Factory.sol";
-import "./interfaces/IUniswapV2Callee.sol";
+import {IAqueductV1Pair} from "./interfaces/IAqueductV1Pair.sol";
+import {AqueductV1ERC20} from "./AqueductV1ERC20.sol";
+import {Math} from "./libraries/Math.sol";
+import {UQ112x112} from "./libraries/UQ112x112.sol";
+import {IERC20} from "./interfaces/IERC20.sol";
+import {IAqueductV1Factory} from "./interfaces/IAqueductV1Factory.sol";
+import {IAqueductV1Callee} from "./interfaces/IAqueductV1Callee.sol";
 
 //solhint-disable func-name-mixedcase
 //solhint-disable avoid-low-level-calls
 //solhint-disable reason-string
 //solhint-disable not-rely-on-time
 
-contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
+contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     using UQ112x112 for uint224;
 
     uint256 public constant override MINIMUM_LIQUIDITY = 10 ** 3;
@@ -40,23 +39,25 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     uint256 public override kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
     // for TWAP balance tracking (use blockTimestampLast)
-    uint public twap0CumulativeLast;
-    uint public twap1CumulativeLast;
-    mapping(address => uint) userStartingCumulatives0;
-    mapping(address => uint) userStartingCumulatives1;
+    uint256 public twap0CumulativeLast;
+    uint256 public twap1CumulativeLast;
+    mapping(address => uint256) public userStartingCumulatives0;
+    mapping(address => uint256) public userStartingCumulatives1;
     uint112 private totalSwappedFunds0;
     uint112 private totalSwappedFunds1;
 
     // superfluid
     using CFAv1Library for CFAv1Library.InitData;
+
     CFAv1Library.InitData public cfaV1;
     bytes32 public constant CFA_ID = keccak256("org.superfluid-finance.agreements.ConstantFlowAgreement.v1");
-    IConstantFlowAgreementV1 cfa;
-    ISuperfluid _host;
+    IConstantFlowAgreementV1 public cfa;
+    ISuperfluid public _host;
 
     uint256 private unlocked = 1;
+
     modifier lock() {
-        require(unlocked == 1, "UniswapV2: LOCKED");
+        require(unlocked == 1, "AqueductV1: LOCKED");
         unlocked = 0;
         _;
         unlocked = 1;
@@ -86,7 +87,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 totalFlow1
     ) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint32 timeElapsed = time - blockTimestampLast;
-        uint _kLast = uint256(reserve0) * reserve1;
+        uint256 _kLast = uint256(reserve0) * reserve1;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
             // use approximation:
@@ -131,21 +132,21 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         if (totalFlow0 > 0 && totalFlow1 > 0) {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
-                int reserve0Diff = (int(uint(reserve0)) - int(uint(_reserve0)));
+                int256 reserve0Diff = (int256(uint256(reserve0)) - int256(uint256(_reserve0)));
                 _reserve0 += uint112(
-                    uint(
-                        int(uint(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
+                    uint256(
+                        int256(uint256(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
                             (reserve0Diff -
                                 ((reserve0Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
                     )
                 );
                 _reserve1 += ((totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000);
             } else if (flowDirection < totalFlow1) {
-                int reserve1Diff = (int(uint(reserve1)) - int(uint(_reserve1)));
+                int256 reserve1Diff = (int256(uint256(reserve1)) - int256(uint256(_reserve1)));
                 _reserve0 += ((totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) + reserve0 - _reserve0;
                 _reserve1 += uint112(
-                    uint(
-                        int(uint(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
+                    uint256(
+                        int256(uint256(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
                             (reserve1Diff -
                                 ((reserve1Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
                     )
@@ -168,7 +169,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         (_reserve0, _reserve1) = _getReservesAtTime(time, totalFlow0, totalFlow1);
     }
 
-    function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint time) {
+    function getRealTimeReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint256 time) {
         (_reserve0, _reserve1) = getReservesAtTime(uint32(block.timestamp % 2 ** 32));
         time = block.timestamp;
     }
@@ -179,7 +180,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 _reserve1,
         uint112 totalFlow0,
         uint112 totalFlow1
-    ) internal view returns (uint _twap0CumulativeLast, uint _twap1CumulativeLast) {
+    ) internal view returns (uint256 _twap0CumulativeLast, uint256 _twap1CumulativeLast) {
         uint32 timeElapsed = time - blockTimestampLast;
         _twap0CumulativeLast = twap0CumulativeLast;
         _twap1CumulativeLast = twap1CumulativeLast;
@@ -192,9 +193,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     UQ112x112
                         .encode(
                             uint112(
-                                uint(
-                                    int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int(uint(reserve0)) - int(uint(_reserve0))) *
+                                uint256(
+                                    int256(uint256(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                        (((int256(uint256(reserve0)) - int256(uint256(_reserve0))) *
                                             int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                                 )
                             )
@@ -216,9 +217,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     UQ112x112
                         .encode(
                             uint112(
-                                uint(
-                                    int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int(uint(reserve1)) - int(uint(_reserve1))) *
+                                uint256(
+                                    int256(uint256(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                        (((int256(uint256(reserve1)) - int256(uint256(_reserve1))) *
                                             int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                                 )
                             )
@@ -250,8 +251,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint112 totalFlow1,
         int96 flow0,
         int96 flow1
-    ) public view returns (uint balance0, uint balance1) {
-        (uint _twap0CumulativeLast, uint _twap1CumulativeLast) = _getUpdatedCumulatives(
+    ) public view returns (uint256 balance0, uint256 balance1) {
+        (uint256 _twap0CumulativeLast, uint256 _twap1CumulativeLast) = _getUpdatedCumulatives(
             time,
             _reserve0,
             _reserve1,
@@ -263,7 +264,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         balance1 = UQ112x112.decode(uint256(uint96(flow0)) * (_twap1CumulativeLast - userStartingCumulatives1[user]));
     }
 
-    function getUserBalancesAtTime(address user, uint32 time) public view returns (uint balance0, uint balance1) {
+    function getUserBalancesAtTime(address user, uint32 time) public view returns (uint256 balance0, uint256 balance1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
         (, int96 flow0, , ) = cfa.getFlow(token0, user, address(this));
@@ -281,17 +282,19 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         );
     }
 
-    function getRealTimeUserBalances(address user) public view returns (uint balance0, uint balance1, uint time) {
+    function getRealTimeUserBalances(
+        address user
+    ) public view returns (uint256 balance0, uint256 balance1, uint256 time) {
         (balance0, balance1) = getUserBalancesAtTime(user, uint32(block.timestamp % 2 ** 32));
         time = block.timestamp;
     }
 
     function _safeTransfer(address token, address to, uint256 value) private {
         (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "UniswapV2: TRANSFER_FAILED");
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "AqueductV1: TRANSFER_FAILED");
     }
 
-    constructor(ISuperfluid host) public {
+    constructor(ISuperfluid host) {
         assert(address(host) != address(0));
         factory = msg.sender;
         _host = host;
@@ -306,7 +309,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
     // called once by the factory at time of deployment
     function initialize(ISuperToken _token0, ISuperToken _token1) external override {
-        require(msg.sender == factory, "UniswapV2: FORBIDDEN"); // sufficient check
+        require(msg.sender == factory, "AqueductV1: FORBIDDEN"); // sufficient check
         token0 = _token0;
         token1 = _token1;
     }
@@ -340,10 +343,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
                 uint112 swappedAmount0 = uint112(
-                    uint(
-                        int(uint(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                            (((int(uint(reserve0)) - int(uint(_reserve0))) * int112(10000 - LOWER_BOUND_FEE)) /
-                                int112(10000 - UPPER_BOUND_FEE))
+                    uint256(
+                        int256(uint256(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                            (((int256(uint256(reserve0)) - int256(uint256(_reserve0))) *
+                                int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                     )
                 );
                 uint112 swappedAmount1 = ((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
@@ -360,10 +363,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                     reserve0 -
                     _reserve0;
                 uint112 swappedAmount1 = uint112(
-                    uint(
-                        int(uint(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                            (((int(uint(reserve1)) - int(uint(_reserve1))) * int112(10000 - LOWER_BOUND_FEE)) /
-                                int112(10000 - UPPER_BOUND_FEE))
+                    uint256(
+                        int256(uint256(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                            (((int256(uint256(reserve1)) - int256(uint256(_reserve1))) *
+                                int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
                     )
                 );
                 twap0CumulativeLast += uint256(UQ112x112.encode(swappedAmount0).uqdiv(totalFlow1));
@@ -392,7 +395,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
     }
 
     function _updateReserves(uint256 balance0, uint256 balance1, uint32 time) private {
-        require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, "UniswapV2: OVERFLOW");
+        require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, "AqueductV1: OVERFLOW");
 
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
@@ -403,7 +406,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
-        address feeTo = IUniswapV2Factory(factory).feeTo();
+        address feeTo = IAqueductV1Factory(factory).feeTo();
         feeOn = feeTo != address(0);
         uint256 _kLast = kLast; // gas savings
         if (feeOn) {
@@ -444,7 +447,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         } else {
             liquidity = Math.min((amount0 * _totalSupply) / _reserve0, (amount1 * _totalSupply) / _reserve1);
         }
-        require(liquidity > 0, "UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED");
+        require(liquidity > 0, "AqueductV1: INSUFFICIENT_LIQUIDITY_MINTED");
         _mint(to, liquidity);
 
         _updateReserves(balance0, balance1, time);
@@ -483,7 +486,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
         uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = (liquidity * balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = (liquidity * balance1) / _totalSupply; // using balances ensures pro-rata distribution
-        require(amount0 > 0 && amount1 > 0, "UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED");
+        require(amount0 > 0 && amount1 > 0, "AqueductV1: INSUFFICIENT_LIQUIDITY_BURNED");
         _burn(address(this), liquidity);
         _safeTransfer(_token0, to, amount0);
         _safeTransfer(_token1, to, amount1);
@@ -497,7 +500,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
 
     // this low-level function should be called from a contract which performs important safety checks
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {
-        require(amount0Out > 0 || amount1Out > 0, "UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amount0Out > 0 || amount1Out > 0, "AqueductV1: INSUFFICIENT_OUTPUT_AMOUNT");
 
         uint256 amount0In;
         uint256 amount1In;
@@ -510,10 +513,10 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                 // scope for _token{0,1}, avoids stack too deep errors
                 address _token0 = address(token0);
                 address _token1 = address(token1);
-                require(to != _token0 && to != _token1, "UniswapV2: INVALID_TO");
+                require(to != _token0 && to != _token1, "AqueductV1: INVALID_TO");
                 if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
                 if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
-                if (data.length > 0) IUniswapV2Callee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
+                if (data.length > 0) IAqueductV1Callee(to).aqueductV1Call(msg.sender, amount0Out, amount1Out, data);
 
                 // group real-time read operations for gas savings
                 uint112 totalFlow0;
@@ -530,17 +533,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20, SuperAppBase {
                 balance1 = IERC20(_token1).balanceOf(address(this)) - totalSwappedFunds1;
             }
 
-            require(amount0Out < _reserve0 && amount1Out < _reserve1, "UniswapV2: INSUFFICIENT_LIQUIDITY");
+            require(amount0Out < _reserve0 && amount1Out < _reserve1, "AqueductV1: INSUFFICIENT_LIQUIDITY");
 
             // calculate input amounts (input agnostic)
             amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
             amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
-            require(amount0In > 0 || amount1In > 0, "UniswapV2: INSUFFICIENT_INPUT_AMOUNT");
+            require(amount0In > 0 || amount1In > 0, "AqueductV1: INSUFFICIENT_INPUT_AMOUNT");
 
             // check K
             uint256 balance0Adjusted = balance0 * 1000 - amount0In * 3;
             uint256 balance1Adjusted = balance1 * 1000 - amount1In * 3;
-            require(balance0Adjusted * balance1Adjusted >= uint256(_reserve0) * _reserve1 * 1e6, "UniswapV2: K");
+            require(balance0Adjusted * balance1Adjusted >= uint256(_reserve0) * _reserve1 * 1e6, "AqueductV1: K");
 
             uint32 time = uint32(block.timestamp % 2 ** 32); // TODO: loaded twice, need to optimize
             _updateReserves(balance0, balance1, time);

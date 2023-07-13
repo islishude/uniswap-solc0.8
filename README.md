@@ -1,4 +1,6 @@
-Build UniswapV2 with Solidity 0.8+
+# Aqueduct V1 TWAMM
+
+Bootstrapped from a UniswapV2 fork with Solidity 0.8+
 
 ## Getting started
 

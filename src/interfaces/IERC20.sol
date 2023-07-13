@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
-//solhint-disable-next-line compiler-version
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.12;
 
 interface IERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);

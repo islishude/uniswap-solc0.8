@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { constants as ethconst } from "ethers";
-import { UniswapV2Factory } from "../../typechain-types";
+import { AqueductV1Factory } from "../../typechain-types";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
 import { getCreate2Address } from "./shared/utilities";
@@ -11,9 +11,9 @@ const TEST_ADDRESSES: [string, string] = [
     "0x2000000000000000000000000000000000000000",
 ];
 
-describe.skip("UniswapV2Factory", () => {
+describe.skip("AqueductV1Factory", () => {
     async function fixture() {
-        const tmp = await ethers.getContractFactory("UniswapV2Factory");
+        const tmp = await ethers.getContractFactory("AqueductV1Factory");
         const [wallet, other] = await ethers.getSigners();
         const factory = await tmp.deploy(wallet.address, "");
         return { factory: factory, wallet, other };
@@ -26,15 +26,15 @@ describe.skip("UniswapV2Factory", () => {
         expect(await factory.allPairsLength()).to.eq(0);
     });
 
-    async function createPair(factory: UniswapV2Factory, tokens: [string, string]) {
-        const pairContract = await ethers.getContractFactory("UniswapV2Pair");
+    async function createPair(factory: AqueductV1Factory, tokens: [string, string]) {
+        const pairContract = await ethers.getContractFactory("AqueductV1Pair");
         const create2Address = getCreate2Address(factory.address, tokens, pairContract.bytecode);
         await expect(factory.createPair(tokens[0], tokens[1]))
             .to.emit(factory, "PairCreated")
             .withArgs(TEST_ADDRESSES[0], TEST_ADDRESSES[1], create2Address, 1);
 
-        await expect(factory.createPair(tokens[0], tokens[1])).to.be.reverted; // UniswapV2: PAIR_EXISTS
-        await expect(factory.createPair(tokens[1], tokens[0])).to.be.reverted; // UniswapV2: PAIR_EXISTS
+        await expect(factory.createPair(tokens[0], tokens[1])).to.be.reverted; // AqueductV1: PAIR_EXISTS
+        await expect(factory.createPair(tokens[1], tokens[0])).to.be.reverted; // AqueductV1: PAIR_EXISTS
         expect(await factory.getPair(tokens[0], tokens[1])).to.eq(create2Address);
         expect(await factory.getPair(tokens[1], tokens[0])).to.eq(create2Address);
         expect(await factory.allPairs(0)).to.eq(create2Address);
@@ -49,7 +49,7 @@ describe.skip("UniswapV2Factory", () => {
     it("Pair:codeHash", async () => {
         const { factory } = await loadFixture(fixture);
         const codehash = await factory.PAIR_HASH();
-        // const pair = await ethers.getContractFactory("UniswapV2Pair");
+        // const pair = await ethers.getContractFactory("AqueductV1Pair");
         // expect(ethers.utils.keccak256(pair.bytecode)).to.be.eq(codehash);
         expect(codehash).to.be.eq("0x443533a897cfad2762695078bf6ee9b78b4edcda64ec31e1c83066cee4c90a7e");
     });
@@ -73,16 +73,16 @@ describe.skip("UniswapV2Factory", () => {
 
     it("setFeeTo", async () => {
         const { factory, wallet, other } = await loadFixture(fixture);
-        await expect(factory.connect(other).setFeeTo(other.address)).to.be.revertedWith("UniswapV2: FORBIDDEN");
+        await expect(factory.connect(other).setFeeTo(other.address)).to.be.revertedWith("AqueductV1: FORBIDDEN");
         await factory.setFeeTo(wallet.address);
         expect(await factory.feeTo()).to.eq(wallet.address);
     });
 
     it("setFeeToSetter", async () => {
         const { factory, wallet, other } = await loadFixture(fixture);
-        await expect(factory.connect(other).setFeeToSetter(other.address)).to.be.revertedWith("UniswapV2: FORBIDDEN");
+        await expect(factory.connect(other).setFeeToSetter(other.address)).to.be.revertedWith("AqueductV1: FORBIDDEN");
         await factory.setFeeToSetter(other.address);
         expect(await factory.feeToSetter()).to.eq(other.address);
-        await expect(factory.setFeeToSetter(wallet.address)).to.be.revertedWith("UniswapV2: FORBIDDEN");
+        await expect(factory.setFeeToSetter(wallet.address)).to.be.revertedWith("AqueductV1: FORBIDDEN");
     });
 });

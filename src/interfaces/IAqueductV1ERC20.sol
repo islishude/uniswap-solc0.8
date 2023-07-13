@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
-//solhint-disable-next-line compiler-version
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.12;
 
 //solhint-disable func-name-mixedcase
-interface IUniswapV2ERC20 {
+interface IAqueductV1ERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Transfer(address indexed from, address indexed to, uint256 value);
 

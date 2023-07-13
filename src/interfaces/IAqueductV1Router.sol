@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
-import "./IUniswapV2Router01.sol";
+import {IAqueductV1Router01} from "./IAqueductV1Router01.sol";
 
-interface IUniswapV2Router is IUniswapV2Router01 {
+interface IAqueductV1Router is IAqueductV1Router01 {
     function removeLiquidityETHSupportingFeeOnTransferTokens(
         address token,
         uint256 liquidity,

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 pragma solidity ^0.8.12;
 
-import "./interfaces/IUniswapV2Factory.sol";
-import "./UniswapV2Pair.sol";
+import {IAqueductV1Factory} from "./interfaces/IAqueductV1Factory.sol";
+import {AqueductV1Pair} from "./AqueductV1Pair.sol";
+import {IAqueductV1Pair} from "./interfaces/IAqueductV1Pair.sol";
+import {ISuperfluid, ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
-contract UniswapV2Factory is IUniswapV2Factory {
-    bytes32 public constant PAIR_HASH = keccak256(type(UniswapV2Pair).creationCode);
+contract AqueductV1Factory is IAqueductV1Factory {
+    bytes32 public constant PAIR_HASH = keccak256(type(AqueductV1Pair).creationCode);
 
     address public override feeTo;
     address public override feeToSetter;
@@ -15,7 +16,7 @@ contract UniswapV2Factory is IUniswapV2Factory {
     address[] public override allPairs;
 
     // superfluid
-    ISuperfluid _host;
+    ISuperfluid internal _host;
 
     constructor(address _feeToSetter, ISuperfluid host) {
         assert(address(host) != address(0));
@@ -28,13 +29,13 @@ contract UniswapV2Factory is IUniswapV2Factory {
     }
 
     function createPair(address tokenA, address tokenB) external override returns (address pair) {
-        require(tokenA != tokenB, "UniswapV2: IDENTICAL_ADDRESSES");
+        require(tokenA != tokenB, "AqueductV1: IDENTICAL_ADDRESSES");
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "UniswapV2: ZERO_ADDRESS");
-        require(getPair[token0][token1] == address(0), "UniswapV2: PAIR_EXISTS"); // single check is sufficient
+        require(token0 != address(0), "AqueductV1: ZERO_ADDRESS");
+        require(getPair[token0][token1] == address(0), "AqueductV1: PAIR_EXISTS"); // single check is sufficient
 
-        pair = address(new UniswapV2Pair{salt: keccak256(abi.encodePacked(token0, token1))}(_host));
-        IUniswapV2Pair(pair).initialize(ISuperToken(token0), ISuperToken(token1));
+        pair = address(new AqueductV1Pair{salt: keccak256(abi.encodePacked(token0, token1))}(_host));
+        IAqueductV1Pair(pair).initialize(ISuperToken(token0), ISuperToken(token1));
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);
@@ -42,12 +43,12 @@ contract UniswapV2Factory is IUniswapV2Factory {
     }
 
     function setFeeTo(address _feeTo) external override {
-        require(msg.sender == feeToSetter, "UniswapV2: FORBIDDEN");
+        require(msg.sender == feeToSetter, "AqueductV1: FORBIDDEN");
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external override {
-        require(msg.sender == feeToSetter, "UniswapV2: FORBIDDEN");
+        require(msg.sender == feeToSetter, "AqueductV1: FORBIDDEN");
         feeToSetter = _feeToSetter;
     }
 }
