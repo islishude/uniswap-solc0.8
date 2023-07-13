@@ -16,8 +16,12 @@
   ],
   "files": [
     "contracts",
+    "!contracts/test",
+    "typechain-types",
+    "!typechain-types/test",
     "artifacts/contracts",
-    "typechain-types"
+    "!artifacts/test",
+    "!artifacts/contracts/**/*.dbg.json"
   ],
   "engines": {
     "node": ">=16"
