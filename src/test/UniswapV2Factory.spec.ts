@@ -1,6 +1,5 @@
 import { expect } from "chai";
-import { constants as ethconst, Wallet } from "ethers";
-import { UniswapV2Factory } from "../../typechain-types";
+import { UniswapV2Factory, UniswapV2Pair } from "../../typechain-types";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
 import { getCreate2Address } from "./shared/utilities";
@@ -16,25 +15,26 @@ describe("UniswapV2Factory", () => {
     const tmp = await ethers.getContractFactory("UniswapV2Factory");
     const [wallet, other] = await ethers.getSigners();
     const factory = await tmp.deploy(wallet.address);
-    return { factory: factory, wallet, other };
+    return { factory, wallet, other };
   }
 
   it("feeTo, feeToSetter, allPairsLength", async () => {
     const { factory, wallet } = await loadFixture(fixture);
-    expect(await factory.feeTo()).to.eq(ethconst.AddressZero);
+    expect(await factory.feeTo()).to.eq(ethers.ZeroAddress);
     expect(await factory.feeToSetter()).to.eq(wallet.address);
     expect(await factory.allPairsLength()).to.eq(0);
   });
 
   async function createPair(
     factory: UniswapV2Factory,
-    tokens: [string, string]
+    tokens: [string, string],
   ) {
     const pairContract = await ethers.getContractFactory("UniswapV2Pair");
+    const factoryAddress = await factory.getAddress();
     const create2Address = getCreate2Address(
-      factory.address,
+      factoryAddress,
       tokens,
-      pairContract.bytecode
+      pairContract.bytecode,
     );
     await expect(factory.createPair(tokens[0], tokens[1]))
       .to.emit(factory, "PairCreated")
@@ -47,8 +47,8 @@ describe("UniswapV2Factory", () => {
     expect(await factory.allPairs(0)).to.eq(create2Address);
     expect(await factory.allPairsLength()).to.eq(1);
 
-    const pair = pairContract.attach(create2Address);
-    expect(await pair.factory()).to.eq(factory.address);
+    const pair = pairContract.attach(create2Address) as UniswapV2Pair;
+    expect(await pair.factory()).to.eq(factoryAddress);
     expect(await pair.token0()).to.eq(TEST_ADDRESSES[0]);
     expect(await pair.token1()).to.eq(TEST_ADDRESSES[1]);
   }
@@ -59,7 +59,7 @@ describe("UniswapV2Factory", () => {
     // const pair = await ethers.getContractFactory("UniswapV2Pair");
     // expect(ethers.utils.keccak256(pair.bytecode)).to.be.eq(codehash);
     expect(codehash).to.be.eq(
-      "0x443533a897cfad2762695078bf6ee9b78b4edcda64ec31e1c83066cee4c90a7e"
+      "0x443533a897cfad2762695078bf6ee9b78b4edcda64ec31e1c83066cee4c90a7e",
     );
   });
 
@@ -72,7 +72,7 @@ describe("UniswapV2Factory", () => {
     const { factory } = await loadFixture(fixture);
     await createPair(
       factory,
-      TEST_ADDRESSES.slice().reverse() as [string, string]
+      TEST_ADDRESSES.slice().reverse() as [string, string],
     );
   });
 
@@ -80,13 +80,13 @@ describe("UniswapV2Factory", () => {
     const { factory } = await loadFixture(fixture);
     const tx = await factory.createPair(...TEST_ADDRESSES);
     const receipt = await tx.wait();
-    expect(receipt.gasUsed).to.eq(2355845);
+    expect(receipt!.gasUsed).to.eq(2356517);
   });
 
   it("setFeeTo", async () => {
     const { factory, wallet, other } = await loadFixture(fixture);
     await expect(
-      factory.connect(other).setFeeTo(other.address)
+      factory.connect(other).setFeeTo(other.address),
     ).to.be.revertedWith("UniswapV2: FORBIDDEN");
     await factory.setFeeTo(wallet.address);
     expect(await factory.feeTo()).to.eq(wallet.address);
@@ -95,12 +95,12 @@ describe("UniswapV2Factory", () => {
   it("setFeeToSetter", async () => {
     const { factory, wallet, other } = await loadFixture(fixture);
     await expect(
-      factory.connect(other).setFeeToSetter(other.address)
+      factory.connect(other).setFeeToSetter(other.address),
     ).to.be.revertedWith("UniswapV2: FORBIDDEN");
     await factory.setFeeToSetter(other.address);
     expect(await factory.feeToSetter()).to.eq(other.address);
     await expect(factory.setFeeToSetter(wallet.address)).to.be.revertedWith(
-      "UniswapV2: FORBIDDEN"
+      "UniswapV2: FORBIDDEN",
     );
   });
 });
