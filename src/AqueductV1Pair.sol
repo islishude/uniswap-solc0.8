@@ -16,7 +16,6 @@ import {IAqueductV1Callee} from "./interfaces/IAqueductV1Callee.sol";
 
 //solhint-disable func-name-mixedcase
 //solhint-disable avoid-low-level-calls
-//solhint-disable reason-string
 //solhint-disable not-rely-on-time
 
 contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
@@ -63,6 +62,25 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         unlocked = 1;
     }
 
+    constructor(ISuperfluid host) {
+        assert(address(host) != address(0));
+        factory = msg.sender;
+        _host = host;
+
+        cfa = IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)));
+        cfaV1 = CFAv1Library.InitData(host, cfa);
+
+        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL;
+
+        host.registerApp(configWord);
+    }
+
+    function initialize(ISuperToken _token0, ISuperToken _token1) external override {
+        if (msg.sender != factory) revert PAIR_FORBIDDEN(); // sufficient check
+        token0 = _token0;
+        token1 = _token1;
+    }
+
     function getRealTimeIncomingFlowRates() public view returns (uint112 totalFlow0, uint112 totalFlow1, uint32 time) {
         totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
@@ -80,7 +98,6 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         _blockTimestampLast = blockTimestampLast;
     }
 
-    // internal helper, get reserves without added fees
     function _getReservesAtTimeNoFees(
         uint32 time,
         uint112 totalFlow0,
@@ -90,13 +107,14 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         uint256 _kLast = uint256(reserve0) * reserve1;
 
         if (totalFlow0 > 0 && totalFlow1 > 0 && timeElapsed > 0) {
-            // use approximation:
-            uint112 totalAmount0 = (totalFlow0 * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000; // apply upper bound fee to input amounts
-            uint112 totalAmount1 = (totalFlow1 * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
-            // not sure if these uint256->uint112 downcasts are safe:
-            _reserve0 = uint112(Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1)));
-            _reserve1 = uint112(_kLast / _reserve0);
-
+            (_reserve0, _reserve1) = _calculateReservesBothFlows(
+                _kLast,
+                totalFlow0,
+                totalFlow1,
+                timeElapsed,
+                reserve0,
+                reserve1
+            );
             // paradigm's formula for TWAMM has precision issues + high gas consumption:
             /*int resChange0 = int256(Math.sqrt(reserve0 * totalAmount1));
             int resChange1 = int256(Math.sqrt(reserve1 * totalAmount0));
@@ -105,19 +123,61 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
             _reserve0 = uint256(int(Math.sqrt((_kLast * totalAmount0) / totalAmount1)) * (ePower + c) / (ePower - c));
             _reserve1 = _kLast / _reserve0;*/
         } else if (totalFlow0 > 0 && timeElapsed > 0) {
-            // use x * y = k
-            uint112 totalAmount0 = (totalFlow0 * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
-            _reserve0 = reserve0 + totalAmount0;
-            _reserve1 = uint112(_kLast / _reserve0); // should be a safe downcast
+            (_reserve0, _reserve1) = _calculateReservesFlow0(_kLast, totalFlow0, timeElapsed, reserve0);
         } else if (totalFlow1 > 0 && timeElapsed > 0) {
-            // use x * y = k
-            uint112 totalAmount1 = (totalFlow1 * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
-            _reserve1 = reserve1 + totalAmount1;
-            _reserve0 = uint112(_kLast / _reserve1); // should be a safe downcast
+            (_reserve0, _reserve1) = _calculateReservesFlow1(_kLast, totalFlow1, timeElapsed, reserve1);
         } else {
             // get static reserves
             (_reserve0, _reserve1, ) = getReserves();
         }
+    }
+
+    // Common function to calculate total amount after fee
+    function _calculateTotalAmount(uint112 totalFlow, uint32 timeElapsed) internal pure returns (uint112) {
+        return (totalFlow * timeElapsed * (10000 - UPPER_BOUND_FEE)) / 10000;
+    }
+
+    // Function to handle reserves calculation in case of both flows
+    function _calculateReservesBothFlows(
+        uint256 _kLast,
+        uint112 totalFlow0,
+        uint112 totalFlow1,
+        uint32 timeElapsed,
+        uint112 reserve0,
+        uint112 reserve1
+    ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
+        // use approximation:
+        uint112 totalAmount0 = _calculateTotalAmount(totalFlow0, timeElapsed); // apply upper bound fee to input amounts
+        uint112 totalAmount1 = _calculateTotalAmount(totalFlow1, timeElapsed);
+        // not sure if these uint256->uint112 downcasts are safe:
+        _reserve0 = uint112(Math.sqrt((_kLast * (reserve0 + totalAmount0)) / (reserve1 + totalAmount1)));
+        _reserve1 = uint112(_kLast / _reserve0);
+    }
+
+    // Function to handle reserves calculation in case of flow0 only
+    function _calculateReservesFlow0(
+        uint256 _kLast,
+        uint112 totalFlow0,
+        uint32 timeElapsed,
+        uint112 reserve0
+    ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
+        // use x * y = k
+        uint112 totalAmount0 = _calculateTotalAmount(totalFlow0, timeElapsed);
+        _reserve0 = reserve0 + totalAmount0;
+        _reserve1 = uint112(_kLast / _reserve0); // should be a safe downcast
+    }
+
+    // Function to handle reserves calculation in case of flow1 only
+    function _calculateReservesFlow1(
+        uint256 _kLast,
+        uint112 totalFlow1,
+        uint32 timeElapsed,
+        uint112 reserve1
+    ) internal pure returns (uint112 _reserve0, uint112 _reserve1) {
+        // use x * y = k
+        uint112 totalAmount1 = _calculateTotalAmount(totalFlow1, timeElapsed);
+        _reserve1 = reserve1 + totalAmount1;
+        _reserve0 = uint112(_kLast / _reserve1); // should be a safe downcast
     }
 
     function _getReservesAtTime(
@@ -132,37 +192,43 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         if (totalFlow0 > 0 && totalFlow1 > 0) {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
-                int256 reserve0Diff = (int256(uint256(reserve0)) - int256(uint256(_reserve0)));
-                _reserve0 += uint112(
-                    uint256(
-                        int256(uint256(totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
-                            (reserve0Diff -
-                                ((reserve0Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
-                    )
-                );
-                _reserve1 += ((totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000);
+                _reserve0 +=
+                    _calculateFees(totalFlow0, timeElapsed, LOWER_BOUND_FEE) +
+                    _calculateReserveDiffFee(reserve0, _reserve0, LOWER_BOUND_FEE, UPPER_BOUND_FEE);
+                _reserve1 += _calculateFees(totalFlow1, timeElapsed, LOWER_BOUND_FEE);
             } else if (flowDirection < totalFlow1) {
-                int256 reserve1Diff = (int256(uint256(reserve1)) - int256(uint256(_reserve1)));
-                _reserve0 += ((totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000) + reserve0 - _reserve0;
-                _reserve1 += uint112(
-                    uint256(
-                        int256(uint256(totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000) +
-                            (reserve1Diff -
-                                ((reserve1Diff * int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE)))
-                    )
-                );
+                _reserve0 += _calculateFees(totalFlow0, timeElapsed, LOWER_BOUND_FEE) + reserve0 - _reserve0;
+                _reserve1 +=
+                    _calculateFees(totalFlow1, timeElapsed, LOWER_BOUND_FEE) +
+                    _calculateReserveDiffFee(reserve1, _reserve1, LOWER_BOUND_FEE, UPPER_BOUND_FEE);
             } else {
-                _reserve0 += (totalFlow0 * timeElapsed * LOWER_BOUND_FEE) / 10000;
-                _reserve1 += (totalFlow1 * timeElapsed * LOWER_BOUND_FEE) / 10000;
+                _reserve0 += _calculateFees(totalFlow0, timeElapsed, LOWER_BOUND_FEE);
+                _reserve1 += _calculateFees(totalFlow1, timeElapsed, LOWER_BOUND_FEE);
             }
         } else if (totalFlow0 > 0) {
-            _reserve0 += (totalFlow0 * timeElapsed * UPPER_BOUND_FEE) / 10000;
+            _reserve0 += _calculateFees(totalFlow0, timeElapsed, UPPER_BOUND_FEE);
         } else if (totalFlow1 > 0) {
-            _reserve1 += (totalFlow1 * timeElapsed * UPPER_BOUND_FEE) / 10000;
+            _reserve1 += _calculateFees(totalFlow1, timeElapsed, UPPER_BOUND_FEE);
         }
     }
 
-    // intended to be used externally
+    function _calculateFees(uint112 totalFlow, uint32 timeElapsed, uint112 fee) internal pure returns (uint112) {
+        return (totalFlow * timeElapsed * fee) / 10000;
+    }
+
+    function _calculateReserveDiffFee(
+        uint112 reserve,
+        uint112 _reserve,
+        uint112 lowerBoundFee,
+        uint112 upperBoundFee
+    ) internal pure returns (uint112) {
+        int256 reserveDiff = int256(uint256(reserve)) - int256(uint256(_reserve));
+        return
+            uint112(
+                uint256((reserveDiff - ((reserveDiff * int112(10000 - lowerBoundFee)) / int112(10000 - upperBoundFee))))
+            );
+    }
+
     function getReservesAtTime(uint32 time) public view returns (uint112 _reserve0, uint112 _reserve1) {
         uint112 totalFlow0 = uint112(uint96(cfa.getNetFlow(token0, address(this))));
         uint112 totalFlow1 = uint112(uint96(cfa.getNetFlow(token1, address(this))));
@@ -188,51 +254,39 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         if (totalFlow0 > 0 && totalFlow1 > 0) {
             uint256 flowDirection = (totalFlow0 * reserve1) / reserve0;
             if (flowDirection > totalFlow1) {
-                // reserve0 - _reserve0 can be negative, hence the messy casts
-                _twap0CumulativeLast += uint256(
-                    UQ112x112
-                        .encode(
-                            uint112(
-                                uint256(
-                                    int256(uint256(totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int256(uint256(reserve0)) - int256(uint256(_reserve0))) *
-                                            int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
-                                )
-                            )
-                        )
-                        .uqdiv(totalFlow1)
+                // reserve0 - _reserve0 can be negative, hence the messy casts in helper functions
+                _twap0CumulativeLast += _calculateTwapWithReservesAndFees(
+                    totalFlow0,
+                    timeElapsed,
+                    totalFlow1,
+                    reserve0,
+                    _reserve0
                 );
-                _twap1CumulativeLast += uint256(
-                    UQ112x112
-                        .encode(((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + reserve1 - _reserve1)
-                        .uqdiv(totalFlow0)
+                _twap1CumulativeLast += _calculateTwapWithReserves(
+                    totalFlow1,
+                    timeElapsed,
+                    totalFlow0,
+                    reserve1,
+                    _reserve1
                 );
             } else if (flowDirection < totalFlow1) {
-                _twap0CumulativeLast += uint256(
-                    UQ112x112
-                        .encode(((totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + reserve0 - _reserve0)
-                        .uqdiv(totalFlow1)
+                _twap0CumulativeLast += _calculateTwapWithReserves(
+                    totalFlow0,
+                    timeElapsed,
+                    totalFlow1,
+                    reserve0,
+                    _reserve0
                 );
-                _twap1CumulativeLast += uint256(
-                    UQ112x112
-                        .encode(
-                            uint112(
-                                uint256(
-                                    int256(uint256(totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
-                                        (((int256(uint256(reserve1)) - int256(uint256(_reserve1))) *
-                                            int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
-                                )
-                            )
-                        )
-                        .uqdiv(totalFlow0)
+                _twap1CumulativeLast += _calculateTwapWithReservesAndFees(
+                    totalFlow1,
+                    timeElapsed,
+                    totalFlow0,
+                    reserve1,
+                    _reserve1
                 );
             } else {
-                _twap0CumulativeLast += uint256(
-                    UQ112x112.encode(((totalFlow0 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000)).uqdiv(totalFlow1)
-                );
-                _twap1CumulativeLast += uint256(
-                    UQ112x112.encode(((totalFlow1 * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000)).uqdiv(totalFlow0)
-                );
+                _twap0CumulativeLast += _calculateTwap(totalFlow0, timeElapsed, totalFlow1);
+                _twap1CumulativeLast += _calculateTwap(totalFlow1, timeElapsed, totalFlow0);
             }
         } else if (totalFlow0 > 0) {
             // change in reserves always positive here
@@ -240,6 +294,57 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
         } else if (totalFlow1 > 0) {
             _twap0CumulativeLast += uint256(UQ112x112.encode(reserve0 - _reserve0).uqdiv(totalFlow1));
         }
+    }
+
+    function _calculateTwapWithReservesAndFees(
+        uint112 totalFlow,
+        uint32 timeElapsed,
+        uint112 oppositeTotalFlow,
+        uint112 reserve,
+        uint112 _reserve
+    ) internal pure returns (uint256) {
+        return
+            uint256(
+                UQ112x112
+                    .encode(
+                        uint112(
+                            uint256(
+                                int256(uint256(totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) +
+                                    (((int256(uint256(reserve)) - int256(uint256(_reserve))) *
+                                        int112(10000 - LOWER_BOUND_FEE)) / int112(10000 - UPPER_BOUND_FEE))
+                            )
+                        )
+                    )
+                    .uqdiv(oppositeTotalFlow)
+            );
+    }
+
+    function _calculateTwapWithReserves(
+        uint112 totalFlow,
+        uint32 timeElapsed,
+        uint112 oppositeTotalFlow,
+        uint112 reserve,
+        uint112 _reserve
+    ) internal pure returns (uint256) {
+        return
+            uint256(
+                UQ112x112
+                    .encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000) + reserve - _reserve)
+                    .uqdiv(oppositeTotalFlow)
+            );
+    }
+
+    function _calculateTwap(
+        uint112 totalFlow,
+        uint32 timeElapsed,
+        uint112 oppositeTotalFlow
+    ) internal pure returns (uint256) {
+        return
+            uint256(
+                UQ112x112.encode(((totalFlow * timeElapsed * (10000 - LOWER_BOUND_FEE)) / 10000)).uqdiv(
+                    oppositeTotalFlow
+                )
+            );
     }
 
     function _getUserBalancesAtTime(
@@ -292,26 +397,6 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     function _safeTransfer(address token, address to, uint256 value) private {
         (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, value));
         if (!success && (data.length != 0 || !abi.decode(data, (bool)))) revert PAIR_TRANSFER_FAILED();
-    }
-
-    constructor(ISuperfluid host) {
-        assert(address(host) != address(0));
-        factory = msg.sender;
-        _host = host;
-
-        cfa = IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)));
-        cfaV1 = CFAv1Library.InitData(host, cfa);
-
-        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL;
-
-        host.registerApp(configWord);
-    }
-
-    // called once by the factory at time of deployment
-    function initialize(ISuperToken _token0, ISuperToken _token1) external override {
-        if (msg.sender != factory) revert PAIR_FORBIDDEN(); // sufficient check
-        token0 = _token0;
-        token1 = _token1;
     }
 
     // update reserves and, on the first call per block, price accumulators
