@@ -1,32 +1,32 @@
-import { BigNumber, utils } from "ethers";
+import { ethers } from "ethers";
 
-export function expandTo18Decimals(n: number): BigNumber {
-  return BigNumber.from(n).mul(BigNumber.from(10).pow(18));
+export function expandTo18Decimals(n: number): bigint {
+  return BigInt(n) * 10n ** 18n;
 }
 
 export function getCreate2Address(
   factoryAddress: string,
   [tokenA, tokenB]: [string, string],
-  bytecode: string
+  bytecode: string,
 ): string {
   const [token0, token1] =
     tokenA < tokenB ? [tokenA, tokenB] : [tokenB, tokenA];
-  return utils.getCreate2Address(
+  return ethers.getCreate2Address(
     factoryAddress,
-    utils.keccak256(
-      utils.solidityPack(["address", "address"], [token0, token1])
+    ethers.keccak256(
+      ethers.solidityPacked(["address", "address"], [token0, token1]),
     ),
-    utils.keccak256(bytecode)
+    ethers.keccak256(bytecode),
   );
 }
 
-export function encodePrice(reserve0: BigNumber, reserve1: BigNumber) {
+export function encodePrice(reserve0: bigint, reserve1: bigint) {
   return [
-    reserve1.mul(BigNumber.from(2).pow(112)).div(reserve0),
-    reserve0.mul(BigNumber.from(2).pow(112)).div(reserve1),
+    (reserve1 * 2n ** 112n) / reserve0,
+    (reserve0 * 2n ** 112n) / reserve1,
   ];
 }
 
-export const MINIMUM_LIQUIDITY = BigNumber.from(10).pow(3);
+export const MINIMUM_LIQUIDITY = 10n ** 3n;
 
 export const UniswapVersion = "1";
