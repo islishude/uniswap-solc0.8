@@ -363,9 +363,9 @@ describe("UniswapV2Pair", () => {
     await pair.sync();
 
     const initialPrice = encodePrice(token0Amount, token1Amount);
-    // expect(await pair.price0CumulativeLast()).to.eq(initialPrice[0]);
-    // expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1]);
-    // expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 1);
+    expect(await pair.price0CumulativeLast()).to.eq(initialPrice[0]);
+    expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1]);
+    expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 1);
 
     const swapAmount = expandTo18Decimals(3);
     await token0.transfer(pair.address, swapAmount);
