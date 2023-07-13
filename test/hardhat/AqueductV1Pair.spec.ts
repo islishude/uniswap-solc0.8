@@ -300,8 +300,9 @@ describe("AqueductV1Pair", () => {
                     amount: swapAmount,
                 })
                 .exec(wallet);
-            await expect(pair.swap(0, expectedOutputAmount.add(1), wallet.address, "0x")).to.be.revertedWith(
-                "AqueductV1: K"
+            await expect(pair.swap(0, expectedOutputAmount.add(1), wallet.address, "0x")).to.be.revertedWithCustomError(
+                pair,
+                "PAIR_K"
             );
             await pair.swap(0, expectedOutputAmount, wallet.address, "0x");
         });
@@ -325,7 +326,10 @@ describe("AqueductV1Pair", () => {
                     amount: inputAmount,
                 })
                 .exec(wallet);
-            await expect(pair.swap(outputAmount.add(1), 0, wallet.address, "0x")).to.be.revertedWith("AqueductV1: K");
+            await expect(pair.swap(outputAmount.add(1), 0, wallet.address, "0x")).to.be.revertedWithCustomError(
+                pair,
+                "PAIR_K"
+            );
             await pair.swap(outputAmount, 0, wallet.address, "0x");
         });
     });
@@ -1131,8 +1135,9 @@ describe("AqueductV1Pair", () => {
             )
             .sub(1);
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
-        await expect(pair.swap(0, expectedOutputAmount.add("1"), wallet.address, "0x")).to.be.revertedWith(
-            "AqueductV1: K"
+        await expect(pair.swap(0, expectedOutputAmount.add("1"), wallet.address, "0x")).to.be.revertedWithCustomError(
+            pair,
+            "PAIR_K"
         );
 
         // make a correct discrete swap

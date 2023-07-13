@@ -19,6 +19,20 @@ interface IAqueductV1Pair is IAqueductV1ERC20 {
     );
     event Sync(uint112 reserve0, uint112 reserve1);
 
+    error PAIR_LOCKED();
+    error PAIR_TRANSFER_FAILED();
+    error PAIR_FORBIDDEN();
+    error PAIR_OVERFLOW();
+    error PAIR_INSUFFICIENT_LIQUIDITY_MINTED();
+    error PAIR_INSUFFICIENT_LIQUIDITY_BURNED();
+    error PAIR_INSUFFICIENT_OUTPUT_AMOUNT();
+    error PAIR_INVALID_TO();
+    error PAIR_INSUFFICIENT_LIQUIDITY();
+    error PAIR_INSUFFICIENT_INPUT_AMOUNT();
+    error PAIR_K();
+    error PAIR_TOKEN_NOT_IN_POOL();
+    error PAIR_SUPPORT_ONLY_ONE_HOST();
+
     function MINIMUM_LIQUIDITY() external pure returns (uint256);
 
     function factory() external view returns (address);

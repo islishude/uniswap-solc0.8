@@ -29,10 +29,10 @@ contract AqueductV1Factory is IAqueductV1Factory {
     }
 
     function createPair(address tokenA, address tokenB) external override returns (address pair) {
-        require(tokenA != tokenB, "AqueductV1: IDENTICAL_ADDRESSES");
+        if (tokenA == tokenB) revert FACTORY_IDENTICAL_ADDRESSES();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "AqueductV1: ZERO_ADDRESS");
-        require(getPair[token0][token1] == address(0), "AqueductV1: PAIR_EXISTS"); // single check is sufficient
+        if (token0 == address(0)) revert FACTORY_ZERO_ADDRESS();
+        if (getPair[token0][token1] != address(0)) revert FACTORY_PAIR_EXISTS(); // single check is sufficient
 
         pair = address(new AqueductV1Pair{salt: keccak256(abi.encodePacked(token0, token1))}(_host));
         IAqueductV1Pair(pair).initialize(ISuperToken(token0), ISuperToken(token1));
@@ -43,12 +43,12 @@ contract AqueductV1Factory is IAqueductV1Factory {
     }
 
     function setFeeTo(address _feeTo) external override {
-        require(msg.sender == feeToSetter, "AqueductV1: FORBIDDEN");
+        if (msg.sender != feeToSetter) revert FACTORY_FORBIDDEN();
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external override {
-        require(msg.sender == feeToSetter, "AqueductV1: FORBIDDEN");
+        if (msg.sender != feeToSetter) revert FACTORY_FORBIDDEN();
         feeToSetter = _feeToSetter;
     }
 }

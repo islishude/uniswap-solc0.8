@@ -11,6 +11,9 @@ contract WETH9 {
     event Deposit(address indexed dst, uint256 wad);
     event Withdrawal(address indexed src, uint256 wad);
 
+    error WETH9_INSUFFICIENT_BALANCE();
+    error WETH9_INSUFFICIENT_ALLOWANCE();
+
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
@@ -24,7 +27,7 @@ contract WETH9 {
     }
 
     function withdraw(uint256 wad) public {
-        require(balanceOf[msg.sender] >= wad, "");
+        if (balanceOf[msg.sender] < wad) revert WETH9_INSUFFICIENT_BALANCE();
         balanceOf[msg.sender] -= wad;
         payable(msg.sender).transfer(wad);
         emit Withdrawal(msg.sender, wad);
@@ -45,10 +48,10 @@ contract WETH9 {
     }
 
     function transferFrom(address src, address dst, uint256 wad) public returns (bool) {
-        require(balanceOf[src] >= wad, "");
+        if (balanceOf[src] < wad) revert WETH9_INSUFFICIENT_BALANCE();
 
         if (src != msg.sender && allowance[src][msg.sender] != type(uint256).max) {
-            require(allowance[src][msg.sender] >= wad, "");
+            if (allowance[src][msg.sender] < wad) revert WETH9_INSUFFICIENT_ALLOWANCE();
             allowance[src][msg.sender] -= wad;
         }
 
