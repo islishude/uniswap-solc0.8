@@ -13,19 +13,22 @@ import { Signer } from "ethers";
 
 describe("UniswapV2Pair", () => {
   async function fixture() {
-    const pairFactory = await ethers.getContractFactory("UniswapV2Pair");
+    const [pairFactory, erc20Factory] = await Promise.all([
+      ethers.getContractFactory("UniswapV2Pair"),
+      ethers.getContractFactory("ERC20"),
+    ]);
     const [wallet, other] = await ethers.getSigners();
 
     const factory = await (
       await ethers.getContractFactory("UniswapV2Factory")
     ).deploy(wallet.address);
 
-    const tokenA = (await (
-      await ethers.getContractFactory("ERC20")
-    ).deploy(expandTo18Decimals(10000))) as ERC20;
-    const tokenB = (await (
-      await ethers.getContractFactory("ERC20")
-    ).deploy(expandTo18Decimals(10000))) as ERC20;
+    const tokenA = (await erc20Factory.deploy(
+      expandTo18Decimals(10000),
+    )) as ERC20;
+    const tokenB = (await erc20Factory.deploy(
+      expandTo18Decimals(10000),
+    )) as ERC20;
 
     const [tokenAAddress, tokenBAddress] = await Promise.all([
       tokenA.getAddress(),

@@ -12,13 +12,11 @@ describe("UniswapV2ERC20", () => {
     const factory = await ethers.getContractFactory("ERC20");
     const token = await factory.deploy(TOTAL_SUPPLY);
     const [wallet, other] = await ethers.getSigners();
-
-    const [tokenAddress] = await Promise.all([token.getAddress()]);
-    return { token, tokenAddress, wallet, other };
+    return { token, wallet, other };
   }
 
   it("name, symbol, decimals, totalSupply, balanceOf, DOMAIN_SEPARATOR, PERMIT_TYPEHASH", async () => {
-    const { token, tokenAddress, wallet } = await loadFixture(fixture);
+    const { token, wallet } = await loadFixture(fixture);
     const name = await token.name();
     expect(name).to.eq("Uniswap V2");
     expect(await token.symbol()).to.eq("UNI-V2");
@@ -40,7 +38,7 @@ describe("UniswapV2ERC20", () => {
             ethers.keccak256(ethers.toUtf8Bytes(name)),
             ethers.keccak256(ethers.toUtf8Bytes(UniswapVersion)),
             chainId,
-            tokenAddress,
+            await token.getAddress(),
           ],
         ),
       ),
@@ -121,7 +119,7 @@ describe("UniswapV2ERC20", () => {
   });
 
   it("permit", async () => {
-    const { token, tokenAddress, wallet, other } = await loadFixture(fixture);
+    const { token, wallet, other } = await loadFixture(fixture);
     const nonce = await token.nonces(wallet.address);
     const deadline = ethers.MaxUint256;
     const { chainId } = await wallet.provider.getNetwork();
@@ -133,7 +131,7 @@ describe("UniswapV2ERC20", () => {
         name: tokenName,
         version: UniswapVersion,
         chainId: chainId,
-        verifyingContract: tokenAddress,
+        verifyingContract: await token.getAddress(),
       },
       // "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
       {
