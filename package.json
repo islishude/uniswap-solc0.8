@@ -1,6 +1,6 @@
 {
   "name": "aqueduct-twamm",
-  "description": "Core contracts for Auwduct's Time-Weighted Auotmated Market Maker (TWAMM). Bootstrapped from a uniswap v2 fork with solidity 0.8",
+  "description": "Core contracts for Aqueduct's Time-Weighted Auotmated Market Maker (TWAMM). Bootstrapped from a uniswap v2 fork with solidity 0.8",
   "version": "1.0.0",
   "homepage": "https://www.aqueduct.fi/",
   "repository": {
