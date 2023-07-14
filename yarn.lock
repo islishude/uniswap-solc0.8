@@ -1558,7 +1558,7 @@ __metadata:
     dotenv: ^16.3.1
     eslint: ^8.44.0
     ethers: ^6.6.3
-    hardhat: ^2.16.1
+    hardhat: ^2.17.0
     hardhat-gas-reporter: ^1.0.9
     prettier: ^3.0.0
     prettier-plugin-solidity: ^1.1.3
@@ -4105,9 +4105,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hardhat@npm:^2.16.1":
-  version: 2.16.1
-  resolution: "hardhat@npm:2.16.1"
+"hardhat@npm:^2.17.0":
+  version: 2.17.0
+  resolution: "hardhat@npm:2.17.0"
   dependencies:
     "@ethersproject/abi": ^5.1.2
     "@metamask/eth-sig-util": ^4.0.0
@@ -4168,7 +4168,7 @@ __metadata:
       optional: true
   bin:
     hardhat: internal/cli/bootstrap.js
-  checksum: 32508ab6463efd796e8805150c182a9b974fcec8e4ab362a95f8bab2b4baf24c4feb48bbee1f3a7165a934f5257e1d3fcfea5764f261404aec23a88066341e48
+  checksum: fcbbee245069a9c3fd0b7f015bc7b99529d3b2be6b8c0c9a61d6a68e5eb2bece8d4f7a9a206808af8fa46a3f3f05df51571caa4e88d3ebbc977c0f16fdb0aafe
   languageName: node
   linkType: hard
 
