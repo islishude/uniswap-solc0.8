@@ -204,8 +204,8 @@ describe("AqueductV1Pair", () => {
 
         // check initial reserves (shouldn't have changed)
         let realTimeReserves = await pair.getRealTimeReserves();
-        expect(realTimeReserves._reserve0).to.equal(token0Amount);
-        expect(realTimeReserves._reserve1).to.equal(token1Amount);
+        expect(realTimeReserves.reserve0).to.equal(token0Amount);
+        expect(realTimeReserves.reserve1).to.equal(token1Amount);
 
         // create a stream
         const flowRate = BigNumber.from("1000000000");
@@ -227,7 +227,7 @@ describe("AqueductV1Pair", () => {
         const lpToken0Amount = expandTo18Decimals(1);
 
         const realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
-        const lpToken1Amount = realTimeReserves2._reserve1.mul(lpToken0Amount).div(realTimeReserves2._reserve0); // calculate correct ratio based on reserves
+        const lpToken1Amount = realTimeReserves2.reserve1.mul(lpToken0Amount).div(realTimeReserves2.reserve0); // calculate correct ratio based on reserves
 
         await token0
             .transfer({
@@ -244,7 +244,7 @@ describe("AqueductV1Pair", () => {
 
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
 
-        const expectedNewLiquidity = lpToken1Amount.mul(expectedInitialLiquidity).div(realTimeReserves2._reserve1);
+        const expectedNewLiquidity = lpToken1Amount.mul(expectedInitialLiquidity).div(realTimeReserves2.reserve1);
         const expectedTotalLiquidity = expectedInitialLiquidity.add(expectedNewLiquidity);
         await expect(pair.mint(wallet2.address))
             .to.emit(pair, "Mint")
@@ -544,8 +544,8 @@ describe("AqueductV1Pair", () => {
 
         // check initial reserves (shouldn't have changed)
         let realTimeReserves = await pair.getRealTimeReserves();
-        expect(realTimeReserves._reserve0).to.equal(token0Amount);
-        expect(realTimeReserves._reserve1).to.equal(token1Amount);
+        expect(realTimeReserves.reserve0).to.equal(token0Amount);
+        expect(realTimeReserves.reserve1).to.equal(token1Amount);
 
         // create a stream
         const flowRate = BigNumber.from("1000000000");
@@ -569,8 +569,8 @@ describe("AqueductV1Pair", () => {
         await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY));
 
         const totalSupply = await pair.totalSupply();
-        const expectedToken0Amount = expectedLiquidity.mul(realTimeReserves2._reserve0).div(totalSupply);
-        const expectedToken1Amount = expectedLiquidity.mul(realTimeReserves2._reserve1).div(totalSupply);
+        const expectedToken0Amount = expectedLiquidity.mul(realTimeReserves2.reserve0).div(totalSupply);
+        const expectedToken1Amount = expectedLiquidity.mul(realTimeReserves2.reserve1).div(totalSupply);
 
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
         await expect(pair.burn(wallet.address))
@@ -702,8 +702,8 @@ describe("AqueductV1Pair", () => {
 
         // check initial reserves (shouldn't have changed)
         let realTimeReserves = await pair.getRealTimeReserves();
-        expect(realTimeReserves._reserve0).to.equal(token0Amount);
-        expect(realTimeReserves._reserve1).to.equal(token1Amount);
+        expect(realTimeReserves.reserve0).to.equal(token0Amount);
+        expect(realTimeReserves.reserve1).to.equal(token1Amount);
 
         // create a stream
         const flowRate = BigNumber.from("1000000000");
@@ -726,8 +726,8 @@ describe("AqueductV1Pair", () => {
 
         const checkStaticReserves = async () => {
             const realTimeReserves = await pair.getRealTimeReserves();
-            expect(realTimeReserves._reserve0).to.equal(token0Amount);
-            expect(realTimeReserves._reserve1).to.equal(token1Amount);
+            expect(realTimeReserves.reserve0).to.equal(token0Amount);
+            expect(realTimeReserves.reserve1).to.equal(token1Amount);
         };
 
         const checkReserves = async () => {
@@ -747,8 +747,8 @@ describe("AqueductV1Pair", () => {
                         providerOrSigner: ethers.provider,
                     })
                 ).to.equal(walletBalanceAfterBuffer0.sub(flowRate.mul(dt)));
-                expect(realTimeReserves._reserve0).to.equal(aNoFees);
-                expect(realTimeReserves._reserve1).to.be.within(b.mul(999).div(1000), b);
+                expect(realTimeReserves.reserve0).to.equal(aNoFees);
+                expect(realTimeReserves.reserve1).to.be.within(b.mul(999).div(1000), b);
             } else {
                 await checkStaticReserves();
             }
@@ -767,7 +767,7 @@ describe("AqueductV1Pair", () => {
             // perfect case:          (reserve + all user balances) = poolBalance
             // never allowed:         (reserve + all user balances) > poolBalance
             // dust amounts allowed:  (reserve + all user balances) < poolBalance
-            expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
+            expect(poolBalance1.sub(realTimeReserves.reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
         };
 
         // check reserves (1-2 sec may have passed, so check timestamp)
@@ -823,8 +823,8 @@ describe("AqueductV1Pair", () => {
 
         // check initial reserves (shouldn't have changed)
         let realTimeReserves = await pair.getRealTimeReserves();
-        expect(realTimeReserves._reserve0).to.equal(token0Amount);
-        expect(realTimeReserves._reserve1).to.equal(token1Amount);
+        expect(realTimeReserves.reserve0).to.equal(token0Amount);
+        expect(realTimeReserves.reserve1).to.equal(token1Amount);
 
         // create a stream
         const flowRate = BigNumber.from("1000000000");
@@ -847,8 +847,8 @@ describe("AqueductV1Pair", () => {
 
         const checkStaticReserves = async () => {
             const realTimeReserves = await pair.getRealTimeReserves();
-            expect(realTimeReserves._reserve0).to.equal(token0Amount);
-            expect(realTimeReserves._reserve1).to.equal(token1Amount);
+            expect(realTimeReserves.reserve0).to.equal(token0Amount);
+            expect(realTimeReserves.reserve1).to.equal(token1Amount);
         };
 
         const checkReserves = async () => {
@@ -868,8 +868,8 @@ describe("AqueductV1Pair", () => {
                         providerOrSigner: ethers.provider,
                     })
                 ).to.equal(walletBalanceAfterBuffer1.sub(flowRate.mul(dt)));
-                expect(realTimeReserves._reserve1).to.equal(bNoFees);
-                expect(realTimeReserves._reserve0).to.be.within(a.mul(999).div(1000), a);
+                expect(realTimeReserves.reserve1).to.equal(bNoFees);
+                expect(realTimeReserves.reserve0).to.be.within(a.mul(999).div(1000), a);
             } else {
                 await checkStaticReserves();
             }
@@ -888,7 +888,7 @@ describe("AqueductV1Pair", () => {
             // perfect case:          (reserve + all user balances) = poolBalance
             // never allowed:         (reserve + all user balances) > poolBalance
             // dust amounts allowed:  (reserve + all user balances) < poolBalance
-            expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
+            expect(poolBalance0.sub(realTimeReserves.reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100);
         };
 
         // check reserves (1-2 sec may have passed, so check timestamp)
@@ -942,8 +942,8 @@ describe("AqueductV1Pair", () => {
 
         // check initial reserves (shouldn't have changed)
         let realTimeReserves = await pair.getRealTimeReserves();
-        expect(realTimeReserves._reserve0).to.equal(token0Amount);
-        expect(realTimeReserves._reserve1).to.equal(token1Amount);
+        expect(realTimeReserves.reserve0).to.equal(token0Amount);
+        expect(realTimeReserves.reserve1).to.equal(token1Amount);
 
         // create a stream of token0
         const flowRate0 = BigNumber.from("1000000000");
@@ -1015,11 +1015,11 @@ describe("AqueductV1Pair", () => {
                     providerOrSigner: ethers.provider,
                 })
             ).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
-            expect(realTimeReserves._reserve0).to.be.within(
+            expect(realTimeReserves.reserve0).to.be.within(
                 BigNumber.from((a * 0.9999999999).toString()),
                 BigNumber.from(a.toString())
             );
-            expect(realTimeReserves._reserve1).to.be.within(
+            expect(realTimeReserves.reserve1).to.be.within(
                 BigNumber.from((b * 0.999).toString()),
                 BigNumber.from(b.toString())
             );
@@ -1054,11 +1054,11 @@ describe("AqueductV1Pair", () => {
                     providerOrSigner: ethers.provider,
                 })
             ).to.equal(walletBalanceAfterBuffer1.sub(flowRate1.mul(dt)));
-            expect(realTimeReserves._reserve0).to.be.within(
+            expect(realTimeReserves.reserve0).to.be.within(
                 BigNumber.from((a * 0.9999999999).toString()),
                 BigNumber.from((a * 1.00000001).toString())
             );
-            expect(realTimeReserves._reserve1).to.be.within(
+            expect(realTimeReserves.reserve1).to.be.within(
                 BigNumber.from((b * 0.9999999999).toString()),
                 BigNumber.from((b * 1.00000001).toString())
             );
@@ -1066,8 +1066,8 @@ describe("AqueductV1Pair", () => {
 
         const checkStaticReserves = async () => {
             const realTimeReserves = await pair.getRealTimeReserves();
-            expect(realTimeReserves._reserve0).to.equal(token0Amount);
-            expect(realTimeReserves._reserve1).to.equal(token1Amount);
+            expect(realTimeReserves.reserve0).to.equal(token0Amount);
+            expect(realTimeReserves.reserve1).to.equal(token1Amount);
         };
 
         const checkReserves = async () => {
@@ -1100,8 +1100,8 @@ describe("AqueductV1Pair", () => {
             // perfect case:          (reserve + all user balances + collected fees) = poolBalance
             // never allowed:         (reserve + all user balances) > poolBalance
             // dust amounts allowed:  (reserve + all user balances) < poolBalance
-            expect(poolBalance0.sub(realTimeReserves._reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100); // within 0-100 wei
-            expect(poolBalance1.sub(realTimeReserves._reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
+            expect(poolBalance0.sub(realTimeReserves.reserve0.add(walletSwapBalances.balance0))).to.be.within(0, 100); // within 0-100 wei
+            expect(poolBalance1.sub(realTimeReserves.reserve1.add(walletSwapBalances.balance1))).to.be.within(0, 100);
         };
 
         // check reserves (1-2 sec may have passed, so check timestamp)
@@ -1127,11 +1127,11 @@ describe("AqueductV1Pair", () => {
             })
             .exec(wallet);
         let realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
-        let expectedOutputAmount = realTimeReserves2._reserve1
+        let expectedOutputAmount = realTimeReserves2.reserve1
             .sub(
-                realTimeReserves2._reserve0
-                    .mul(realTimeReserves2._reserve1)
-                    .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+                realTimeReserves2.reserve0
+                    .mul(realTimeReserves2.reserve1)
+                    .div(realTimeReserves2.reserve0.add(swapAmount.mul(997).div(1000)))
             )
             .sub(1);
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
@@ -1144,11 +1144,11 @@ describe("AqueductV1Pair", () => {
         latestTime = (await ethers.provider.getBlock("latest")).timestamp;
         nextBlockTime = latestTime + 10;
         realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
-        expectedOutputAmount = realTimeReserves2._reserve1
+        expectedOutputAmount = realTimeReserves2.reserve1
             .sub(
-                realTimeReserves2._reserve0
-                    .mul(realTimeReserves2._reserve1)
-                    .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+                realTimeReserves2.reserve0
+                    .mul(realTimeReserves2.reserve1)
+                    .div(realTimeReserves2.reserve0.add(swapAmount.mul(997).div(1000)))
             )
             .sub(1);
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
@@ -1169,11 +1169,11 @@ describe("AqueductV1Pair", () => {
             })
             .exec(wallet);
         realTimeReserves2 = await pair.getReservesAtTime(nextBlockTime);
-        expectedOutputAmount = realTimeReserves2._reserve1
+        expectedOutputAmount = realTimeReserves2.reserve1
             .sub(
-                realTimeReserves2._reserve0
-                    .mul(realTimeReserves2._reserve1)
-                    .div(realTimeReserves2._reserve0.add(swapAmount.mul(997).div(1000)))
+                realTimeReserves2.reserve0
+                    .mul(realTimeReserves2.reserve1)
+                    .div(realTimeReserves2.reserve0.add(swapAmount.mul(997).div(1000)))
             )
             .sub(1);
         await ethers.provider.send("evm_setNextBlockTimestamp", [nextBlockTime]);
