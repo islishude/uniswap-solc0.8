@@ -27,44 +27,27 @@
     "node": ">=16"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-chai-matchers": "^2.0.1",
-    "@nomicfoundation/hardhat-ethers": "^3.0.3",
-    "@nomicfoundation/hardhat-network-helpers": "^1.0.6",
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "@nomicfoundation/hardhat-verify": "^1.0.3",
-    "@typechain/ethers-v6": "^0.4.0",
-    "@typechain/hardhat": "^8.0.0",
-    "@types/chai": "^4.3.5",
-    "@types/mocha": "^10.0.1",
-    "@types/node": "^20.4.2",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "chai": "^4.3.7",
     "dotenv": "^16.3.1",
     "eslint": "^8.44.0",
-    "ethers": "^6.6.3",
-    "hardhat": "^2.16.1",
-    "hardhat-gas-reporter": "^1.0.9",
+    "hardhat": "^2.17.0",
     "prettier": "^3.0.0",
     "prettier-plugin-solidity": "^1.1.3",
-    "solhint": "^3.4.1",
-    "solidity-coverage": "^0.8.4",
-    "ts-node": "^10.9.1",
-    "typechain": "^8.2.0",
-    "typescript": "^5.1.6"
+    "solhint": "^3.4.1"
   },
   "scripts": {
     "lint": "prettier --plugin=prettier-plugin-solidity --check src 'contracts/**/*.sol' && solhint 'contracts/**/*.sol'",
     "lint:fix": "prettier --plugin=prettier-plugin-solidity --write src 'contracts/**/*.sol'",
     "clean": "rimraf artifacts cache types",
-    "precompile": "yarn clean",
+    "precompile": "pnpm run clean",
     "compile": "hardhat compile",
-    "build": "yarn compile",
+    "build": "pnpm run compile",
     "test": "hardhat test",
-    "prepublishOnly": "yarn test"
+    "prepublishOnly": "pnpm run test"
   },
   "license": "GPL-3.0-or-later",
-  "packageManager": "yarn@3.6.1",
   "prettier": {
     "trailingComma": "all"
   }
