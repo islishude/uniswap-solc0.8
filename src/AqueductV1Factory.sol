@@ -67,14 +67,19 @@ contract AqueductV1Factory is IAqueductV1Factory {
     /**************************************************************************
      * Auction
      *************************************************************************/
-    
+
     modifier ensure(uint256 deadline) {
         if (deadline < block.timestamp) revert AUCTION_EXPIRED();
         _;
     }
 
-    function placeBid(address token, address pair, uint256 bid, uint256 swapAmount, uint256 deadline) external ensure(deadline) {
-
+    function placeBid(
+        address token,
+        address pair,
+        uint256 bid,
+        uint256 swapAmount,
+        uint256 deadline
+    ) external ensure(deadline) {
         Auction memory auction = getAuction[pair];
 
         // if first bid and previous auction hasn't been executed, execute previous auction
@@ -88,18 +93,13 @@ contract AqueductV1Factory is IAqueductV1Factory {
         if (token == address(IAqueductV1Pair(pair).token1())) {
             (uint112 reserve0, uint112 reserve1, ) = IAqueductV1Pair(pair).getReserves();
             // TODO: multiply all bids by some constant X to increase precision?
-            bidValue = bid * reserve0 / reserve1;
+            bidValue = (bid * reserve0) / reserve1;
         }
 
         if (bidValue <= auction.winningBid) revert AUCTION_INSUFFICIENT_BID();
 
         // TODO: is TransferHelper ok to use here?
-        TransferHelper.safeTransferFrom(
-            token,
-            msg.sender,
-            address(this),
-            bid + swapAmount
-        );
+        TransferHelper.safeTransferFrom(token, msg.sender, address(this), bid + swapAmount);
         // TODO: track balance for safety?
 
         // return old winner's funds
@@ -120,7 +120,8 @@ contract AqueductV1Factory is IAqueductV1Factory {
         // if this function is called from a SF callback in the pair, do we want the possibility of a revert, or better to have it do nothing?
 
         Auction memory auction = getAuction[pair];
-        if (block.timestamp <= auction.lastAuctionTimestamp || auction.winningBid == 0) revert AUCTION_ALREADY_EXECUTED();
+        if (block.timestamp <= auction.lastAuctionTimestamp || auction.winningBid == 0)
+            revert AUCTION_ALREADY_EXECUTED();
 
         // perform swap
         // these swap calls are basically supplying an excess fee, which already automatically goes to LPs
