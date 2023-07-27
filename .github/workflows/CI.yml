@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: "pnpm"
-      - run: pnpm install --shamefully-hoist
+      - run: pnpm install
       - run: pnpm run lint
       - run: pnpm run compile
       - run: pnpm test
