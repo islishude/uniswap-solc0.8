@@ -8,6 +8,11 @@ interface IAqueductV1Factory {
     error FACTORY_ZERO_ADDRESS();
     error FACTORY_PAIR_EXISTS();
     error FACTORY_FORBIDDEN();
+    error AUCTION_ALREADY_EXECUTED();
+    error AUCTION_PAIR_DOESNT_EXIST();
+    error AUCTION_EXPIRED();
+    error AUCTION_INSUFFICIENT_BID();
+    error AUCTION_TRANSFER_FAILED();
 
     function feeTo() external view returns (address);
 

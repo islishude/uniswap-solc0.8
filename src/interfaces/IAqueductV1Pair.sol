@@ -53,7 +53,7 @@ interface IAqueductV1Pair is IAqueductV1ERC20 {
 
     function burn(address to) external returns (uint256 amount0, uint256 amount1);
 
-    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
+    function swap(uint256 amount0Out, uint256 amount1Out, address to) external;
 
     function skim(address to) external;
 

@@ -511,7 +511,8 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {
+    function swap(uint256 amount0Out, uint256 amount1Out, address to) external override lock {
+        if (msg.sender != factory) revert PAIR_FORBIDDEN(); // TODO: is this ok?
         if (amount0Out <= 0 && amount1Out <= 0) revert PAIR_INSUFFICIENT_OUTPUT_AMOUNT();
 
         uint256 amount0In;
@@ -528,7 +529,7 @@ contract AqueductV1Pair is IAqueductV1Pair, AqueductV1ERC20, SuperAppBase {
                 if (to == _token0 || to == _token1) revert PAIR_INVALID_TO();
                 if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
                 if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
-                if (data.length > 0) IAqueductV1Callee(to).aqueductV1Call(msg.sender, amount0Out, amount1Out, data);
+                //if (data.length > 0) IAqueductV1Callee(to).aqueductV1Call(msg.sender, amount0Out, amount1Out, data);
 
                 // group real-time read operations for gas savings
                 uint112 totalFlow0;
