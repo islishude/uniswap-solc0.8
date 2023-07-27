@@ -106,7 +106,7 @@ contract AqueductV1PairTest is Test {
 
     function test_getReserves_ReturnsReserves() public {
         // Arrange & Act
-        (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) = aqueductV1Pair.getReserves();
+        (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) = aqueductV1Pair.getStaticReserves();
 
         // Assert
         assertEq(_reserve0, 0);

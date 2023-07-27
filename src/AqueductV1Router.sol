@@ -240,12 +240,7 @@ contract AqueductV1Router is IAqueductV1Router {
                 ? (uint256(0), amountOut)
                 : (amountOut, uint256(0));
             address to = i < path.length - 2 ? AqueductV1Library.pairFor(factory, output, path[i + 2]) : _to;
-            IAqueductV1Pair(AqueductV1Library.pairFor(factory, input, output)).swap(
-                amount0Out,
-                amount1Out,
-                to,
-                new bytes(0)
-            );
+            IAqueductV1Pair(AqueductV1Library.pairFor(factory, input, output)).swap(amount0Out, amount1Out, to);
         }
     }
 
@@ -379,7 +374,7 @@ contract AqueductV1Router is IAqueductV1Router {
                 ? (uint256(0), amountOutput)
                 : (amountOutput, uint256(0));
             address to = i < path.length - 2 ? AqueductV1Library.pairFor(factory, output, path[i + 2]) : _to;
-            pair.swap(amount0Out, amount1Out, to, new bytes(0));
+            pair.swap(amount0Out, amount1Out, to);
         }
     }
 
