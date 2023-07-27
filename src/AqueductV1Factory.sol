@@ -77,6 +77,12 @@ contract AqueductV1Factory is IAqueductV1Factory {
 
         Auction memory auction = getAuction[pair];
 
+        // if first bid and previous auction hasn't been executed, execute previous auction
+        if (block.timestamp > auction.lastAuctionTimestamp && auction.winningBid > 0) {
+            executeWinningBid(pair);
+            auction = getAuction[pair];
+        }
+
         //  if token1, need to convert to token0 denominated value
         uint256 bidValue = bid;
         if (token == address(IAqueductV1Pair(pair).token1())) {
@@ -109,7 +115,7 @@ contract AqueductV1Factory is IAqueductV1Factory {
         getAuction[pair] = auction;
     }
 
-    function executeWinningBid(address pair) external {
+    function executeWinningBid(address pair) public {
         // do we need to restrict this to only be called by the pair?
         // if this function is called from a SF callback in the pair, do we want the possibility of a revert, or better to have it do nothing?
 
