@@ -16,7 +16,7 @@ devDependencies:
     version: 1.0.8(hardhat@2.17.0)
   '@nomicfoundation/hardhat-toolbox':
     specifier: ^3.0.0
-    version: 3.0.0(@nomicfoundation/hardhat-chai-matchers@2.0.1)(@nomicfoundation/hardhat-ethers@3.0.4)(@nomicfoundation/hardhat-network-helpers@1.0.8)(@nomicfoundation/hardhat-verify@1.0.4)(@typechain/ethers-v6@0.4.3)(@typechain/hardhat@8.0.3)(@types/chai@4.3.5)(@types/mocha@10.0.1)(@types/node@18.15.13)(chai@4.3.7)(ethers@6.6.5)(hardhat-gas-reporter@1.0.9)(hardhat@2.17.0)(solidity-coverage@0.8.4)(ts-node@10.9.1)(typechain@8.3.1)(typescript@5.1.6)
+    version: 3.0.0(@nomicfoundation/hardhat-chai-matchers@2.0.1)(@nomicfoundation/hardhat-ethers@3.0.4)(@nomicfoundation/hardhat-network-helpers@1.0.8)(@nomicfoundation/hardhat-verify@1.0.4)(@typechain/ethers-v6@0.4.3)(@typechain/hardhat@8.0.3)(@types/chai@4.3.5)(@types/mocha@10.0.1)(@types/node@20.4.5)(chai@4.3.7)(ethers@6.6.5)(hardhat-gas-reporter@1.0.9)(hardhat@2.17.0)(solidity-coverage@0.8.4)(ts-node@10.9.1)(typechain@8.3.1)(typescript@5.1.6)
   '@nomicfoundation/hardhat-verify':
     specifier: ^1.0.0
     version: 1.0.4(hardhat@2.17.0)
@@ -33,8 +33,8 @@ devDependencies:
     specifier: '>=9.1.0'
     version: 10.0.1
   '@types/node':
-    specifier: '>=16.0.0'
-    version: 18.15.13
+    specifier: '>=20.4.5'
+    version: 20.4.5
   '@typescript-eslint/eslint-plugin':
     specifier: ^6.0.0
     version: 6.0.0(@typescript-eslint/parser@6.0.0)(eslint@8.44.0)(typescript@5.1.6)
@@ -73,7 +73,7 @@ devDependencies:
     version: 0.8.4(hardhat@2.17.0)
   ts-node:
     specifier: ^10.9.1
-    version: 10.9.1(@types/node@18.15.13)(typescript@5.1.6)
+    version: 10.9.1(@types/node@20.4.5)(typescript@5.1.6)
   typechain:
     specifier: ^8.3.1
     version: 8.3.1(typescript@5.1.6)
@@ -782,7 +782,7 @@ packages:
       hardhat: 2.17.0(ts-node@10.9.1)(typescript@5.1.6)
     dev: true
 
-  /@nomicfoundation/hardhat-toolbox@3.0.0(@nomicfoundation/hardhat-chai-matchers@2.0.1)(@nomicfoundation/hardhat-ethers@3.0.4)(@nomicfoundation/hardhat-network-helpers@1.0.8)(@nomicfoundation/hardhat-verify@1.0.4)(@typechain/ethers-v6@0.4.3)(@typechain/hardhat@8.0.3)(@types/chai@4.3.5)(@types/mocha@10.0.1)(@types/node@18.15.13)(chai@4.3.7)(ethers@6.6.5)(hardhat-gas-reporter@1.0.9)(hardhat@2.17.0)(solidity-coverage@0.8.4)(ts-node@10.9.1)(typechain@8.3.1)(typescript@5.1.6):
+  /@nomicfoundation/hardhat-toolbox@3.0.0(@nomicfoundation/hardhat-chai-matchers@2.0.1)(@nomicfoundation/hardhat-ethers@3.0.4)(@nomicfoundation/hardhat-network-helpers@1.0.8)(@nomicfoundation/hardhat-verify@1.0.4)(@typechain/ethers-v6@0.4.3)(@typechain/hardhat@8.0.3)(@types/chai@4.3.5)(@types/mocha@10.0.1)(@types/node@20.4.5)(chai@4.3.7)(ethers@6.6.5)(hardhat-gas-reporter@1.0.9)(hardhat@2.17.0)(solidity-coverage@0.8.4)(ts-node@10.9.1)(typechain@8.3.1)(typescript@5.1.6):
     resolution: {integrity: sha512-MsteDXd0UagMksqm9KvcFG6gNKYNa3GGNCy73iQ6bEasEgg2v8Qjl6XA5hjs8o5UD5A3153B6W2BIVJ8SxYUtA==}
     peerDependencies:
       '@nomicfoundation/hardhat-chai-matchers': ^2.0.0
@@ -811,13 +811,13 @@ packages:
       '@typechain/hardhat': 8.0.3(@typechain/ethers-v6@0.4.3)(ethers@6.6.5)(hardhat@2.17.0)(typechain@8.3.1)
       '@types/chai': 4.3.5
       '@types/mocha': 10.0.1
-      '@types/node': 18.15.13
+      '@types/node': 20.4.5
       chai: 4.3.7
       ethers: 6.6.5
       hardhat: 2.17.0(ts-node@10.9.1)(typescript@5.1.6)
       hardhat-gas-reporter: 1.0.9(hardhat@2.17.0)
       solidity-coverage: 0.8.4(hardhat@2.17.0)
-      ts-node: 10.9.1(@types/node@18.15.13)(typescript@5.1.6)
+      ts-node: 10.9.1(@types/node@20.4.5)(typescript@5.1.6)
       typechain: 8.3.1(typescript@5.1.6)
       typescript: 5.1.6
     dev: true
@@ -3200,7 +3200,7 @@ packages:
       solc: 0.7.3(debug@4.3.4)
       source-map-support: 0.5.21
       stacktrace-parser: 0.1.10
-      ts-node: 10.9.1(@types/node@18.15.13)(typescript@5.1.6)
+      ts-node: 10.9.1(@types/node@20.4.5)(typescript@5.1.6)
       tsort: 0.0.1
       typescript: 5.1.6
       undici: 5.22.1
@@ -5247,7 +5247,7 @@ packages:
       typescript: 5.1.6
     dev: true
 
-  /ts-node@10.9.1(@types/node@18.15.13)(typescript@5.1.6):
+  /ts-node@10.9.1(@types/node@20.4.5)(typescript@5.1.6):
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
     hasBin: true
     peerDependencies:
@@ -5266,7 +5266,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 18.15.13
+      '@types/node': 20.4.5
       acorn: 8.10.0
       acorn-walk: 8.2.0
       arg: 4.1.3
