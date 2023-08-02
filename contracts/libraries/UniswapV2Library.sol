@@ -4,7 +4,7 @@ pragma solidity =0.8.4;
 
 //solhint-disable reason-string
 
-import "../interfaces/IUniswapV2Pair.sol";
+import {IUniswapV2Pair} from "../interfaces/IUniswapV2Pair.sol";
 
 library UniswapV2Library {
     // returns sorted token addresses, used to handle return values from pairs sorted in this order

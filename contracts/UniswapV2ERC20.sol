@@ -2,7 +2,7 @@
 
 pragma solidity =0.8.4;
 
-import "./interfaces/IUniswapV2ERC20.sol";
+import {IUniswapV2ERC20} from "./interfaces/IUniswapV2ERC20.sol";
 
 //solhint-disable var-name-mixedcase
 //solhint-disable reason-string

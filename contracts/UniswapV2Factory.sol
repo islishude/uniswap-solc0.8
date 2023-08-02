@@ -2,8 +2,9 @@
 
 pragma solidity =0.8.4;
 
-import "./interfaces/IUniswapV2Factory.sol";
-import "./UniswapV2Pair.sol";
+import {IUniswapV2Factory} from "./interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "./interfaces/IUniswapV2Pair.sol";
+import {UniswapV2Pair} from "./UniswapV2Pair.sol";
 
 contract UniswapV2Factory is IUniswapV2Factory {
     bytes32 public constant PAIR_HASH =
