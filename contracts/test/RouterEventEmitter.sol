@@ -4,8 +4,6 @@ pragma solidity =0.8.4;
 
 import {IUniswapV2Router01} from "../interfaces/IUniswapV2Router01.sol";
 
-//solhint-disable avoid-low-level-calls
-
 contract RouterEventEmitter {
     event Amounts(uint256[] amounts);
 

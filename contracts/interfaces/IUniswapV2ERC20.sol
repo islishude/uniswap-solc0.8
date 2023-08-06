@@ -3,7 +3,6 @@
 //solhint-disable-next-line compiler-version
 pragma solidity >=0.5.0;
 
-//solhint-disable func-name-mixedcase
 interface IUniswapV2ERC20 {
     event Approval(
         address indexed owner,

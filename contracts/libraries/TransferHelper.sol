@@ -2,9 +2,6 @@
 
 pragma solidity =0.8.4;
 
-//solhint-disable avoid-low-level-calls
-//solhint-disable reason-string
-
 // helper methods for interacting with ERC20 tokens and sending ETH that do not consistently return true/false
 library TransferHelper {
     function safeApprove(address token, address to, uint256 value) internal {

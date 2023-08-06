@@ -10,11 +10,6 @@ import {IERC20} from "./interfaces/IERC20.sol";
 import {IUniswapV2Factory} from "./interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Callee} from "./interfaces/IUniswapV2Callee.sol";
 
-//solhint-disable func-name-mixedcase
-//solhint-disable avoid-low-level-calls
-//solhint-disable reason-string
-//solhint-disable not-rely-on-time
-
 contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     using UQ112x112 for uint224;
 

@@ -3,8 +3,6 @@
 //solhint-disable-next-line compiler-version
 pragma solidity >=0.5.0;
 
-//solhint-disable func-name-mixedcase
-
 import {IUniswapV2ERC20} from "./IUniswapV2ERC20.sol";
 
 interface IUniswapV2Pair is IUniswapV2ERC20 {
