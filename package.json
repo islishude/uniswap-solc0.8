@@ -24,7 +24,7 @@
     "!artifacts/contracts/**/*.dbg.json"
   ],
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
@@ -64,7 +64,7 @@
     "prepublishOnly": "pnpm run test"
   },
   "license": "GPL-3.0-or-later",
-  "packageManager": "pnpm@8.6.10",
+  "packageManager": "pnpm@8.6.12",
   "prettier": {
     "trailingComma": "all"
   }

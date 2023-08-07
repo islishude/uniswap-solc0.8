@@ -10,7 +10,7 @@ jobs:
   test:
     strategy:
       matrix:
-        node: ["16", "18"]
+        node: ["18"]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
