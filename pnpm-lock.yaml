@@ -66,8 +66,8 @@ devDependencies:
     specifier: ^1.1.3
     version: 1.1.3(prettier@3.0.0)
   solhint:
-    specifier: ^3.5.1
-    version: 3.5.1
+    specifier: ^3.6.2
+    version: 3.6.2
   solidity-coverage:
     specifier: ^0.8.1
     version: 0.8.4(hardhat@2.17.1)
@@ -4875,8 +4875,8 @@ packages:
       - debug
     dev: true
 
-  /solhint@3.5.1:
-    resolution: {integrity: sha512-29+vUIwUmsasKuIzCYOqiKlu4We7+BVYNuoKmDMWsmjfPDoJQpM65eBzYuqEr18lwvXpQAbjTGdzvm4iZIO9Uw==}
+  /solhint@3.6.2:
+    resolution: {integrity: sha512-85EeLbmkcPwD+3JR7aEMKsVC9YrRSxd4qkXuMzrlf7+z2Eqdfm1wHWq1ffTuo5aDhoZxp2I9yF3QkxZOxOL7aQ==}
     hasBin: true
     dependencies:
       '@solidity-parser/parser': 0.16.1
