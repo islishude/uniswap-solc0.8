@@ -9,6 +9,7 @@
     "reason-string": "off",
     "func-name-mixedcase": "off",
     "avoid-low-level-calls": "off",
-    "not-rely-on-time": "off"
+    "not-rely-on-time": "off",
+    "custom-errors": "off"
   }
 }
