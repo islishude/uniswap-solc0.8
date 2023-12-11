@@ -423,9 +423,8 @@ describe("UniswapV2Pair", () => {
   });
 
   it("feeTo:on", async () => {
-    const { pair, wallet, token0, token1, other, factory } = await loadFixture(
-      fixture,
-    );
+    const { pair, wallet, token0, token1, other, factory } =
+      await loadFixture(fixture);
 
     await factory.setFeeTo(other.address);
 

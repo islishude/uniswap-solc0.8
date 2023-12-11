@@ -188,9 +188,8 @@ describe("UniswapV2Router", () => {
   });
 
   it("addLiquidity", async () => {
-    const { router02, token0, token1, wallet, pair } = await loadFixture(
-      v2Fixture,
-    );
+    const { router02, token0, token1, wallet, pair } =
+      await loadFixture(v2Fixture);
 
     const token0Amount = expandTo18Decimals(1);
     const token1Amount = expandTo18Decimals(4);
@@ -233,9 +232,8 @@ describe("UniswapV2Router", () => {
   });
 
   it("removeLiquidity", async () => {
-    const { router02, token0, token1, wallet, pair } = await loadFixture(
-      v2Fixture,
-    );
+    const { router02, token0, token1, wallet, pair } =
+      await loadFixture(v2Fixture);
 
     const token0Amount = expandTo18Decimals(1);
     const token1Amount = expandTo18Decimals(4);
@@ -379,9 +377,8 @@ describe("UniswapV2Router", () => {
   });
 
   it("removeLiquidityWithPermit", async () => {
-    const { router02, token0, token1, wallet, pair } = await loadFixture(
-      v2Fixture,
-    );
+    const { router02, token0, token1, wallet, pair } =
+      await loadFixture(v2Fixture);
 
     const token0Amount = expandTo18Decimals(1);
     const token1Amount = expandTo18Decimals(4);
@@ -439,9 +436,8 @@ describe("UniswapV2Router", () => {
   });
 
   it("removeLiquidityETHWithPermit", async () => {
-    const { router02, wallet, WETHPartner, wethPair, WETH } = await loadFixture(
-      v2Fixture,
-    );
+    const { router02, wallet, WETHPartner, wethPair, WETH } =
+      await loadFixture(v2Fixture);
 
     const WETHPartnerAmount = expandTo18Decimals(1);
     const ETHAmount = expandTo18Decimals(4);
@@ -507,9 +503,8 @@ describe("UniswapV2Router", () => {
     const expectedOutputAmount = 1662497915624478906n;
 
     it("happy path", async () => {
-      const { router02, token0, token1, wallet, pair } = await loadFixture(
-        v2Fixture,
-      );
+      const { router02, token0, token1, wallet, pair } =
+        await loadFixture(v2Fixture);
 
       // before each
       await token0.transfer(await pair.getAddress(), token0Amount);
@@ -573,9 +568,8 @@ describe("UniswapV2Router", () => {
     });
 
     it("gas", async () => {
-      const { router02, token0, token1, wallet, pair } = await loadFixture(
-        v2Fixture,
-      );
+      const { router02, token0, token1, wallet, pair } =
+        await loadFixture(v2Fixture);
 
       // before each
       await token0.transfer(await pair.getAddress(), token0Amount);
@@ -612,9 +606,8 @@ describe("UniswapV2Router", () => {
     const outputAmount = expandTo18Decimals(1);
 
     it("happy path", async () => {
-      const { router02, token0, token1, wallet, pair } = await loadFixture(
-        v2Fixture,
-      );
+      const { router02, token0, token1, wallet, pair } =
+        await loadFixture(v2Fixture);
 
       // before each
       await token0.transfer(await pair.getAddress(), token0Amount);
