@@ -64,7 +64,7 @@
     "prepublishOnly": "pnpm run test"
   },
   "license": "GPL-3.0-or-later",
-  "packageManager": "pnpm@8.6.12",
+  "packageManager": "pnpm@8.12.0",
   "prettier": {
     "trailingComma": "all"
   }
