@@ -42,7 +42,7 @@
     "chai": "^4.4.1",
     "dotenv": "^16.3.2",
     "eslint": "^8.53.0",
-    "ethers": "^6.9.2",
+    "ethers": "^6.10.0",
     "hardhat": "^2.19.4",
     "hardhat-gas-reporter": "^1.0.8",
     "prettier": "^3.2.4",
